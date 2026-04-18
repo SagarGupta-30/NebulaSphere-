@@ -1,0 +1,1937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NebulaSphere | Neural Hand Interface</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Syncopate:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --bg-0: #02050d;
+  --bg-1: #071226;
+  --bg-2: #0f1f3a;
+  --panel: rgba(7, 18, 38, 0.62);
+  --panel-strong: rgba(8, 21, 44, 0.82);
+  --panel-border: rgba(107, 203, 255, 0.35);
+  --cyan: #6fd8ff;
+  --cyan-soft: #93e5ff;
+  --teal: #7ef7d1;
+  --amber: #ffd79a;
+  --danger: #ff8278;
+  --muted: #8da9c5;
+  --text: #d3e9ff;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: var(--text);
+  background: radial-gradient(circle at 22% 18%, #123056 0%, var(--bg-1) 35%, var(--bg-0) 75%);
+  font-family: "Space Grotesk", sans-serif;
+}
+
+#mainCanvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#backgroundAura,
+#gridOverlay,
+#scanlines,
+#vignette,
+#flashOverlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+#backgroundAura {
+  background:
+    radial-gradient(circle at 78% 22%, rgba(130, 219, 255, 0.16), transparent 36%),
+    radial-gradient(circle at 18% 82%, rgba(40, 147, 255, 0.16), transparent 42%),
+    radial-gradient(circle at 55% 50%, rgba(20, 120, 220, 0.08), transparent 55%);
+  filter: blur(2px);
+}
+
+#gridOverlay {
+  background:
+    linear-gradient(rgba(66, 140, 190, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(66, 140, 190, 0.07) 1px, transparent 1px);
+  background-size: 50px 50px;
+  mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0) 82%);
+  opacity: 0.55;
+}
+
+#scanlines {
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.16) 0,
+    rgba(0, 0, 0, 0.16) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  opacity: 0.22;
+}
+
+#vignette {
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.82) 100%);
+}
+
+#flashOverlay {
+  opacity: 0;
+  transition: opacity 130ms ease;
+}
+
+#hud {
+  position: fixed;
+  inset: 0;
+  padding: 18px;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+#topBar {
+  display: grid;
+  grid-template-columns: 1.1fr 1.4fr 1.1fr;
+  gap: 14px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 14px 16px;
+  backdrop-filter: blur(8px);
+  box-shadow:
+    inset 0 0 0 1px rgba(149, 227, 255, 0.08),
+    0 10px 34px rgba(0, 0, 0, 0.32);
+}
+
+#leftPanel h3,
+#rightPanel h3 {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8ac4e8;
+  margin-bottom: 12px;
+}
+
+.statRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  margin-bottom: 10px;
+  color: #a4c0db;
+}
+
+.statRow span:last-child {
+  color: var(--cyan-soft);
+  letter-spacing: 0.07em;
+  font-weight: 600;
+}
+
+#centerPanel {
+  text-align: center;
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+#titleMain {
+  font-family: "Syncopate", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.26em;
+  font-size: clamp(20px, 2vw, 30px);
+  color: #c9efff;
+  text-shadow: 0 0 22px rgba(107, 216, 255, 0.38);
+}
+
+#titleSub {
+  margin-top: 8px;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  color: #7cb1d8;
+  text-transform: uppercase;
+}
+
+#gestureName {
+  margin-top: 12px;
+  min-height: 34px;
+  font-size: clamp(18px, 1.9vw, 26px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--teal);
+  text-shadow: 0 0 20px rgba(113, 255, 214, 0.42);
+  transition: color 180ms ease;
+}
+
+#gestureDesc {
+  margin-top: 2px;
+  min-height: 20px;
+  color: #8ec5d4;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+#commandStream {
+  margin-top: 8px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+#commandStream li {
+  display: flex;
+  gap: 8px;
+  color: #8fb6d6;
+  letter-spacing: 0.04em;
+}
+
+#commandStream li strong {
+  color: #6acff4;
+  font-weight: 700;
+  min-width: 36px;
+}
+
+#bottomStrip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+}
+
+.gestureCard {
+  border: 1px solid rgba(109, 201, 255, 0.25);
+  border-radius: 10px;
+  padding: 8px;
+  background: rgba(7, 22, 44, 0.55);
+}
+
+.gestureTag {
+  display: inline-block;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7ee0ff;
+  margin-bottom: 4px;
+}
+
+.gestureHint {
+  font-size: 11px;
+  color: #99b8d2;
+  line-height: 1.28;
+}
+
+#cameraDock {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 260px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(105, 194, 249, 0.35);
+  background: rgba(5, 12, 24, 0.75);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+}
+
+#camHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 10px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: #98c5e5;
+  border-bottom: 1px solid rgba(108, 199, 255, 0.25);
+  background: rgba(12, 26, 50, 0.75);
+}
+
+#camFeed,
+#handCanvas {
+  width: 100%;
+  height: 194px;
+  display: block;
+  transform: scaleX(-1);
+}
+
+#camFeed {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#handReticle {
+  position: fixed;
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  border: 2px solid rgba(126, 247, 209, 0.88);
+  box-shadow:
+    0 0 26px rgba(87, 242, 200, 0.45),
+    inset 0 0 16px rgba(87, 242, 200, 0.2);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+#handReticle::before,
+#handReticle::after {
+  content: "";
+  position: absolute;
+  background: rgba(133, 247, 255, 0.8);
+}
+
+#handReticle::before {
+  left: 50%;
+  top: 18%;
+  width: 2px;
+  height: 64%;
+  transform: translateX(-50%);
+}
+
+#handReticle::after {
+  top: 50%;
+  left: 18%;
+  width: 64%;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
+#startOverlay,
+#loadingOverlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 30;
+}
+
+#startOverlay {
+  background:
+    radial-gradient(circle at 50% 30%, rgba(47, 144, 255, 0.2), transparent 48%),
+    rgba(2, 6, 14, 0.82);
+  transition: opacity 260ms ease;
+}
+
+.startCard {
+  width: min(94vw, 620px);
+  border: 1px solid rgba(124, 206, 255, 0.45);
+  border-radius: 18px;
+  padding: 24px 22px;
+  text-align: center;
+  background: var(--panel-strong);
+  box-shadow:
+    inset 0 0 0 1px rgba(166, 228, 255, 0.12),
+    0 24px 64px rgba(0, 0, 0, 0.45);
+}
+
+.startCard h2 {
+  font-family: "Syncopate", sans-serif;
+  font-size: clamp(18px, 2.5vw, 30px);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #caf0ff;
+}
+
+.startCard p {
+  margin-top: 10px;
+  color: #95bad6;
+  line-height: 1.45;
+  font-size: 14px;
+}
+
+#startBtn {
+  margin-top: 18px;
+  cursor: pointer;
+  border: 1px solid rgba(129, 211, 255, 0.65);
+  border-radius: 999px;
+  background: linear-gradient(120deg, rgba(39, 140, 255, 0.24), rgba(34, 215, 196, 0.18));
+  color: #cff3ff;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 13px 30px;
+  font-weight: 700;
+  transition: transform 140ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+#startBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(40, 144, 255, 0.34);
+  background: linear-gradient(120deg, rgba(58, 156, 255, 0.38), rgba(34, 215, 196, 0.3));
+}
+
+#startBtn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+  transform: none;
+}
+
+#startTiny {
+  margin-top: 8px;
+  color: #7ea8c8;
+  font-size: 12px;
+}
+
+#loadingOverlay {
+  pointer-events: none;
+  background: rgba(4, 10, 20, 0.72);
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+#loadingOverlay.active {
+  opacity: 1;
+}
+
+.loadingCard {
+  width: min(90vw, 420px);
+  background: rgba(8, 19, 38, 0.88);
+  border: 1px solid rgba(114, 203, 255, 0.4);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+#loadingLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #a8d2f0;
+  font-size: 12px;
+}
+
+#loadingBar {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  margin-top: 10px;
+  background: rgba(92, 165, 210, 0.22);
+  overflow: hidden;
+}
+
+#loadingFill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #66d1ff, #72ffd2);
+  transition: width 260ms ease;
+}
+
+@media (max-width: 1120px) {
+  #topBar {
+    grid-template-columns: 1fr;
+  }
+
+  #bottomStrip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #cameraDock {
+    width: 220px;
+  }
+
+  #camFeed,
+  #handCanvas {
+    height: 162px;
+  }
+}
+
+@media (max-width: 760px) {
+  #hud {
+    padding: 12px;
+  }
+
+  #bottomStrip {
+    grid-template-columns: 1fr;
+  }
+
+  #cameraDock {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    bottom: 12px;
+  }
+
+  #startBtn {
+    width: 100%;
+  }
+}
+</style>
+</head>
+<body>
+<canvas id="mainCanvas"></canvas>
+<div id="backgroundAura"></div>
+<div id="gridOverlay"></div>
+<div id="scanlines"></div>
+<div id="vignette"></div>
+<div id="flashOverlay"></div>
+
+<div id="hud">
+  <div id="topBar">
+    <section class="panel" id="leftPanel">
+      <h3>Telemetry</h3>
+      <div class="statRow"><span>Mode</span><span id="modeValue">ORBITAL CORE</span></div>
+      <div class="statRow"><span>Spin</span><span id="spinValue">AUTO</span></div>
+      <div class="statRow"><span>Zoom</span><span id="zoomValue">1.05x</span></div>
+      <div class="statRow"><span>Energy</span><span id="energyValue">100%</span></div>
+      <div class="statRow"><span>Audio</span><span id="audioValue">LIVE</span></div>
+      <div class="statRow"><span>FPS</span><span id="fpsValue">60</span></div>
+    </section>
+
+    <section class="panel" id="centerPanel">
+      <h1 id="titleMain">NebulaSphere</h1>
+      <p id="titleSub">Neural Hand Interface · Quantum Render Matrix</p>
+      <div id="gestureName"></div>
+      <div id="gestureDesc"></div>
+    </section>
+
+    <section class="panel" id="rightPanel">
+      <h3>Command Stream</h3>
+      <ul id="commandStream"></ul>
+    </section>
+  </div>
+
+  <section class="panel" id="bottomStrip">
+    <article class="gestureCard">
+      <span class="gestureTag">Open Palm</span>
+      <p class="gestureHint">Direct rotation control and kinetic swipe thrust.</p>
+    </article>
+    <article class="gestureCard">
+      <span class="gestureTag">Pinch</span>
+      <p class="gestureHint">Precision zoom and focus energy shaping.</p>
+    </article>
+    <article class="gestureCard">
+      <span class="gestureTag">One Finger</span>
+      <p class="gestureHint">Cycle to next simulation mode.</p>
+    </article>
+    <article class="gestureCard">
+      <span class="gestureTag">Two Fingers</span>
+      <p class="gestureHint">Shift spectral hue in real time.</p>
+    </article>
+    <article class="gestureCard">
+      <span class="gestureTag">Three Fingers</span>
+      <p class="gestureHint">Toggle immersive audio live or mute.</p>
+    </article>
+    <article class="gestureCard">
+      <span class="gestureTag">Thumbs Up</span>
+      <p class="gestureHint">Toggle autopilot stabilization on or off.</p>
+    </article>
+    <article class="gestureCard">
+      <span class="gestureTag">Fist</span>
+      <p class="gestureHint">Detonate nova burst and rebuild lattice.</p>
+    </article>
+  </section>
+</div>
+
+<div id="handReticle"></div>
+
+<section id="cameraDock">
+  <div id="camHeader">
+    <span id="handStatus">HAND LINK: OFFLINE</span>
+    <span>MIRROR FEED</span>
+  </div>
+  <video id="camFeed" autoplay playsinline muted></video>
+  <canvas id="handCanvas"></canvas>
+</section>
+
+<div id="startOverlay">
+  <div class="startCard">
+    <h2>Hand Control Runtime</h2>
+    <p>
+      This build is now fully hand-driven after activation: movement, mode switching, zoom, audio toggle,
+      and nova events all run from gestures.
+    </p>
+    <button id="startBtn">Enable Neural Hand Control</button>
+    <div id="startTiny">Camera permission is required. Best used in a bright room with one hand in frame.</div>
+  </div>
+</div>
+
+<div id="loadingOverlay">
+  <div class="loadingCard">
+    <div id="loadingLabel">Booting hand engine...</div>
+    <div id="loadingBar"><div id="loadingFill"></div></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<script>
+(() => {
+  "use strict";
+
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const TAU = Math.PI * 2;
+
+  const canvas = document.getElementById("mainCanvas");
+  const ctx = canvas.getContext("2d", { alpha: false });
+
+  const handCanvas = document.getElementById("handCanvas");
+  const hctx = handCanvas.getContext("2d");
+  const camFeed = document.getElementById("camFeed");
+  const handReticle = document.getElementById("handReticle");
+
+  const modeValueEl = document.getElementById("modeValue");
+  const spinValueEl = document.getElementById("spinValue");
+  const zoomValueEl = document.getElementById("zoomValue");
+  const energyValueEl = document.getElementById("energyValue");
+  const audioValueEl = document.getElementById("audioValue");
+  const fpsValueEl = document.getElementById("fpsValue");
+  const handStatusEl = document.getElementById("handStatus");
+
+  const gestureNameEl = document.getElementById("gestureName");
+  const gestureDescEl = document.getElementById("gestureDesc");
+  const commandStreamEl = document.getElementById("commandStream");
+
+  const flashOverlay = document.getElementById("flashOverlay");
+
+  const startOverlay = document.getElementById("startOverlay");
+  const startBtn = document.getElementById("startBtn");
+  const loadingOverlay = document.getElementById("loadingOverlay");
+  const loadingLabel = document.getElementById("loadingLabel");
+  const loadingFill = document.getElementById("loadingFill");
+
+  const engine = {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    dpr: Math.min(window.devicePixelRatio || 1, 2),
+    time: 0,
+    lastTs: performance.now(),
+    fps: 60,
+    frameCounter: 0,
+    fpsClock: performance.now(),
+    modeIndex: 0,
+    modeDefs: [
+      { id: "orbital", label: "ORBITAL CORE" },
+      { id: "ionstorm", label: "ION STORM" },
+      { id: "warptunnel", label: "WARP TUNNEL" },
+      { id: "lattice", label: "LATTICE FIELD" },
+      { id: "singularity", label: "SINGULARITY" }
+    ],
+    rotX: 0.32,
+    rotY: 0.18,
+    zoom: 1.05,
+    hueShift: 0,
+    energy: 1,
+    autoPilot: true,
+    spinMomentumX: 0,
+    spinMomentumY: 0,
+    novaActive: false,
+    novaTimer: 0,
+    handLinked: false
+  };
+
+  function resizeCanvas() {
+    engine.width = window.innerWidth;
+    engine.height = window.innerHeight;
+    engine.dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    canvas.width = Math.floor(engine.width * engine.dpr);
+    canvas.height = Math.floor(engine.height * engine.dpr);
+    canvas.style.width = engine.width + "px";
+    canvas.style.height = engine.height + "px";
+
+    ctx.setTransform(engine.dpr, 0, 0, engine.dpr, 0, 0);
+
+    handCanvas.width = 260;
+    handCanvas.height = 194;
+  }
+
+  resizeCanvas();
+  window.addEventListener("resize", resizeCanvas);
+
+  function flash(color, duration = 120) {
+    flashOverlay.style.background = color;
+    flashOverlay.style.opacity = "1";
+    window.setTimeout(() => {
+      flashOverlay.style.opacity = "0";
+    }, duration);
+  }
+
+  function logCommand(text, color = "#84cfff") {
+    const now = new Date();
+    const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const li = document.createElement("li");
+    li.innerHTML = `<strong>${time}</strong><span style="color:${color}">${text}</span>`;
+    commandStreamEl.prepend(li);
+    while (commandStreamEl.children.length > 6) {
+      commandStreamEl.removeChild(commandStreamEl.lastElementChild);
+    }
+  }
+
+  function showGesture(name, description, color = "#7ef7d1") {
+    gestureNameEl.textContent = name;
+    gestureNameEl.style.color = color;
+    gestureDescEl.textContent = description;
+  }
+
+  const audio = {
+    ctx: null,
+    initialized: false,
+    muted: false,
+    master: null,
+    dryBus: null,
+    fxBus: null,
+    ambientGain: null,
+    motionGain: null,
+    motionFilter: null,
+    motionPanner: null,
+    motionTone: null,
+    motionToneGain: null
+  };
+
+  function createNoiseBuffer(context, seconds = 2) {
+    const buffer = context.createBuffer(1, context.sampleRate * seconds, context.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i += 1) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    return buffer;
+  }
+
+  function createImpulseResponse(context, duration = 2.4, decay = 2.4) {
+    const length = Math.floor(context.sampleRate * duration);
+    const impulse = context.createBuffer(2, length, context.sampleRate);
+
+    for (let ch = 0; ch < 2; ch += 1) {
+      const channel = impulse.getChannelData(ch);
+      for (let i = 0; i < length; i += 1) {
+        const t = 1 - i / length;
+        channel[i] = (Math.random() * 2 - 1) * Math.pow(t, decay);
+      }
+    }
+
+    return impulse;
+  }
+
+  function ensureAudio() {
+    if (audio.initialized) {
+      if (audio.ctx && audio.ctx.state === "suspended") {
+        audio.ctx.resume();
+      }
+      return;
+    }
+
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) {
+      return;
+    }
+
+    audio.ctx = new AudioContextCtor();
+
+    const compressor = audio.ctx.createDynamicsCompressor();
+    compressor.threshold.value = -24;
+    compressor.knee.value = 26;
+    compressor.ratio.value = 4;
+    compressor.attack.value = 0.01;
+    compressor.release.value = 0.35;
+
+    audio.master = audio.ctx.createGain();
+    audio.master.gain.value = 0.3;
+
+    audio.dryBus = audio.ctx.createGain();
+    audio.dryBus.gain.value = 1;
+
+    const convolver = audio.ctx.createConvolver();
+    convolver.buffer = createImpulseResponse(audio.ctx);
+
+    audio.fxBus = audio.ctx.createGain();
+    audio.fxBus.gain.value = 0.34;
+
+    audio.dryBus.connect(audio.master);
+    audio.fxBus.connect(convolver);
+    convolver.connect(audio.master);
+    audio.master.connect(compressor);
+    compressor.connect(audio.ctx.destination);
+
+    audio.ambientGain = audio.ctx.createGain();
+    audio.ambientGain.gain.value = 0.07;
+    audio.ambientGain.connect(audio.dryBus);
+
+    const droneA = audio.ctx.createOscillator();
+    const droneB = audio.ctx.createOscillator();
+    const shimmer = audio.ctx.createOscillator();
+
+    droneA.type = "sawtooth";
+    droneA.frequency.value = 44;
+    droneB.type = "triangle";
+    droneB.frequency.value = 88;
+    shimmer.type = "sine";
+    shimmer.frequency.value = 352;
+
+    const droneFilter = audio.ctx.createBiquadFilter();
+    droneFilter.type = "lowpass";
+    droneFilter.frequency.value = 260;
+    droneFilter.Q.value = 0.7;
+
+    const shimmerGain = audio.ctx.createGain();
+    shimmerGain.gain.value = 0.016;
+
+    const ambientLfo = audio.ctx.createOscillator();
+    const ambientLfoGain = audio.ctx.createGain();
+    ambientLfo.frequency.value = 0.08;
+    ambientLfoGain.gain.value = 72;
+
+    ambientLfo.connect(ambientLfoGain);
+    ambientLfoGain.connect(droneFilter.frequency);
+
+    droneA.connect(droneFilter);
+    droneB.connect(droneFilter);
+    droneFilter.connect(audio.ambientGain);
+
+    shimmer.connect(shimmerGain);
+    shimmerGain.connect(audio.fxBus);
+
+    const noiseSource = audio.ctx.createBufferSource();
+    noiseSource.buffer = createNoiseBuffer(audio.ctx, 3);
+    noiseSource.loop = true;
+
+    const noiseFilter = audio.ctx.createBiquadFilter();
+    noiseFilter.type = "bandpass";
+    noiseFilter.frequency.value = 840;
+    noiseFilter.Q.value = 0.55;
+
+    const noiseGain = audio.ctx.createGain();
+    noiseGain.gain.value = 0.01;
+
+    noiseSource.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(audio.ambientGain);
+
+    const motionNoise = audio.ctx.createBufferSource();
+    motionNoise.buffer = createNoiseBuffer(audio.ctx, 2);
+    motionNoise.loop = true;
+
+    audio.motionFilter = audio.ctx.createBiquadFilter();
+    audio.motionFilter.type = "bandpass";
+    audio.motionFilter.frequency.value = 320;
+    audio.motionFilter.Q.value = 1.2;
+
+    audio.motionGain = audio.ctx.createGain();
+    audio.motionGain.gain.value = 0;
+
+    audio.motionTone = audio.ctx.createOscillator();
+    audio.motionTone.type = "triangle";
+    audio.motionTone.frequency.value = 130;
+
+    audio.motionToneGain = audio.ctx.createGain();
+    audio.motionToneGain.gain.value = 0;
+
+    audio.motionPanner = audio.ctx.createStereoPanner();
+
+    motionNoise.connect(audio.motionFilter);
+    audio.motionFilter.connect(audio.motionGain);
+    audio.motionGain.connect(audio.motionPanner);
+
+    audio.motionTone.connect(audio.motionToneGain);
+    audio.motionToneGain.connect(audio.motionPanner);
+
+    audio.motionPanner.connect(audio.dryBus);
+
+    droneA.start();
+    droneB.start();
+    shimmer.start();
+    ambientLfo.start();
+    noiseSource.start();
+    motionNoise.start();
+    audio.motionTone.start();
+
+    audio.initialized = true;
+    audio.ctx.resume();
+  }
+
+  function envelopeTone({
+    frequency = 440,
+    endFrequency = frequency,
+    duration = 0.35,
+    volume = 0.22,
+    type = "sine",
+    pan = 0,
+    filterType = "bandpass",
+    filterFreq = 900,
+    q = 6
+  }) {
+    if (!audio.initialized || audio.muted) {
+      return;
+    }
+
+    const now = audio.ctx.currentTime;
+    const osc = audio.ctx.createOscillator();
+    const filter = audio.ctx.createBiquadFilter();
+    const gain = audio.ctx.createGain();
+    const panner = audio.ctx.createStereoPanner();
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(Math.max(30, frequency), now);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(30, endFrequency), now + duration);
+
+    filter.type = filterType;
+    filter.frequency.value = filterFreq;
+    filter.Q.value = q;
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(volume, now + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+    panner.pan.value = clamp(pan, -1, 1);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(panner);
+    panner.connect(audio.dryBus);
+    panner.connect(audio.fxBus);
+
+    osc.start(now);
+    osc.stop(now + duration + 0.08);
+  }
+
+  function playNoiseBurst({ duration = 0.45, volume = 0.2, lowpass = 2200 }) {
+    if (!audio.initialized || audio.muted) {
+      return;
+    }
+
+    const source = audio.ctx.createBufferSource();
+    source.buffer = createNoiseBuffer(audio.ctx, Math.max(1, duration));
+
+    const filter = audio.ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = lowpass;
+
+    const gain = audio.ctx.createGain();
+    const now = audio.ctx.currentTime;
+
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(audio.dryBus);
+    gain.connect(audio.fxBus);
+
+    source.start(now);
+    source.stop(now + duration + 0.06);
+  }
+
+  function playModeShiftSound() {
+    envelopeTone({ frequency: 290, endFrequency: 610, duration: 0.24, volume: 0.16, type: "triangle", filterFreq: 1300, q: 7 });
+    window.setTimeout(() => {
+      envelopeTone({ frequency: 510, endFrequency: 820, duration: 0.18, volume: 0.12, type: "sine", filterFreq: 2200, q: 8 });
+    }, 70);
+  }
+
+  function playHueSound() {
+    envelopeTone({ frequency: 420, endFrequency: 500, duration: 0.12, volume: 0.08, type: "triangle", filterFreq: 1700, q: 4 });
+  }
+
+  function playPinchSound(direction = 1) {
+    const base = direction > 0 ? 250 : 340;
+    envelopeTone({ frequency: base, endFrequency: base + (direction > 0 ? -70 : 70), duration: 0.11, volume: 0.1, type: "sine", filterFreq: 980, q: 6 });
+  }
+
+  function playSwipeSound(direction = 1) {
+    envelopeTone({
+      frequency: direction > 0 ? 180 : 220,
+      endFrequency: direction > 0 ? 560 : 120,
+      duration: 0.2,
+      volume: 0.13,
+      type: "sawtooth",
+      filterFreq: 1600,
+      q: 4,
+      pan: direction > 0 ? 0.8 : -0.8
+    });
+  }
+
+  function playToggleSound(active = true) {
+    if (active) {
+      envelopeTone({ frequency: 360, endFrequency: 540, duration: 0.2, volume: 0.11, type: "sine", filterFreq: 1400 });
+    } else {
+      envelopeTone({ frequency: 440, endFrequency: 210, duration: 0.22, volume: 0.1, type: "triangle", filterFreq: 900 });
+    }
+  }
+
+  function playNovaSound() {
+    if (!audio.initialized || audio.muted) {
+      return;
+    }
+
+    envelopeTone({ frequency: 62, endFrequency: 31, duration: 1.35, volume: 0.32, type: "sawtooth", filterFreq: 420, q: 1.5 });
+    envelopeTone({ frequency: 165, endFrequency: 46, duration: 0.92, volume: 0.2, type: "triangle", filterFreq: 600, q: 2.4 });
+
+    window.setTimeout(() => {
+      envelopeTone({ frequency: 730, endFrequency: 180, duration: 0.66, volume: 0.16, type: "square", filterFreq: 2400, q: 9 });
+    }, 60);
+
+    playNoiseBurst({ duration: 1.2, volume: 0.34, lowpass: 1200 });
+  }
+
+  function updateMotionAudio(speed, xNorm) {
+    if (!audio.initialized) {
+      return;
+    }
+
+    const now = audio.ctx.currentTime;
+    const intensity = clamp(speed * 16, 0, 1.2);
+    const targetNoise = audio.muted ? 0 : 0.006 + intensity * 0.09;
+    const targetTone = audio.muted ? 0 : intensity * 0.028;
+
+    audio.motionGain.gain.linearRampToValueAtTime(targetNoise, now + 0.05);
+    audio.motionToneGain.gain.linearRampToValueAtTime(targetTone, now + 0.05);
+    audio.motionFilter.frequency.linearRampToValueAtTime(280 + intensity * 1800, now + 0.05);
+    audio.motionTone.frequency.linearRampToValueAtTime(110 + intensity * 520, now + 0.05);
+    audio.motionPanner.pan.linearRampToValueAtTime(clamp((xNorm - 0.5) * 1.8, -1, 1), now + 0.05);
+  }
+
+  function setAudioMuted(value) {
+    audio.muted = value;
+    audioValueEl.textContent = value ? "MUTED" : "LIVE";
+    audioValueEl.style.color = value ? "#ffb9a6" : "#99eeff";
+
+    if (audio.initialized) {
+      const now = audio.ctx.currentTime;
+      audio.master.gain.cancelScheduledValues(now);
+      audio.master.gain.linearRampToValueAtTime(value ? 0.0001 : 0.3, now + 0.18);
+    }
+
+    logCommand(value ? "Audio output muted" : "Audio output restored", value ? "#ffbcab" : "#88f6d3");
+  }
+
+  class Particle {
+    constructor() {
+      this.reset();
+    }
+
+    reset() {
+      const theta = Math.random() * TAU;
+      const phi = Math.acos(2 * Math.random() - 1);
+      const radius = 150 + Math.random() * 120;
+
+      this.ox = radius * Math.sin(phi) * Math.cos(theta);
+      this.oy = radius * Math.sin(phi) * Math.sin(theta);
+      this.oz = radius * Math.cos(phi);
+
+      this.x = this.ox;
+      this.y = this.oy;
+      this.z = this.oz;
+
+      this.vx = 0;
+      this.vy = 0;
+      this.vz = 0;
+
+      this.seed = Math.random() * 1000;
+      this.size = Math.random() * 1.9 + 0.3;
+      this.hue = 176 + Math.random() * 90;
+      this.phase = Math.random() * TAU;
+      this.speed = Math.random() * 0.008 + 0.0018;
+    }
+  }
+
+  const PARTICLE_COUNT = 3200;
+  const particles = Array.from({ length: PARTICLE_COUNT }, () => new Particle());
+
+  const stars = Array.from({ length: 220 }, () => ({
+    x: Math.random(),
+    y: Math.random(),
+    z: Math.random() * 0.6 + 0.2,
+    twinkle: Math.random() * TAU
+  }));
+
+  function resetParticlesForMode() {
+    particles.forEach((p) => {
+      if (engine.modeDefs[engine.modeIndex].id === "warptunnel") {
+        const theta = Math.random() * TAU;
+        const radial = 40 + Math.random() * 240;
+        p.ox = Math.cos(theta) * radial;
+        p.oy = Math.sin(theta) * radial;
+        p.oz = (Math.random() - 0.5) * 640;
+      } else if (engine.modeDefs[engine.modeIndex].id === "lattice") {
+        const cell = 22;
+        p.ox = (Math.floor(Math.random() * 22) - 11) * cell;
+        p.oy = (Math.floor(Math.random() * 22) - 11) * cell;
+        p.oz = (Math.floor(Math.random() * 22) - 11) * cell;
+      } else if (engine.modeDefs[engine.modeIndex].id === "singularity") {
+        const theta = Math.random() * TAU;
+        const radius = 40 + Math.random() * 240;
+        p.ox = Math.cos(theta) * radius;
+        p.oy = (Math.random() - 0.5) * 280;
+        p.oz = Math.sin(theta) * radius;
+      } else {
+        p.reset();
+      }
+
+      p.x = p.ox;
+      p.y = p.oy;
+      p.z = p.oz;
+      p.vx = 0;
+      p.vy = 0;
+      p.vz = 0;
+    });
+  }
+
+  function setMode(index, reason = "system") {
+    const safeIndex = ((index % engine.modeDefs.length) + engine.modeDefs.length) % engine.modeDefs.length;
+    engine.modeIndex = safeIndex;
+    modeValueEl.textContent = engine.modeDefs[safeIndex].label;
+    modeValueEl.style.color = "#9fe6ff";
+
+    resetParticlesForMode();
+    playModeShiftSound();
+
+    const readableReason = reason === "gesture" ? "Gesture" : "System";
+    logCommand(`${readableReason}: mode -> ${engine.modeDefs[safeIndex].label}`, "#9de7ff");
+  }
+
+  function triggerNova() {
+    if (engine.novaActive) {
+      return;
+    }
+
+    engine.novaActive = true;
+    engine.novaTimer = 0;
+
+    particles.forEach((p) => {
+      const speed = 6 + Math.random() * 16;
+      const t = Math.random() * TAU;
+      const ph = Math.acos(2 * Math.random() - 1);
+      p.vx = speed * Math.sin(ph) * Math.cos(t);
+      p.vy = speed * Math.sin(ph) * Math.sin(t);
+      p.vz = speed * Math.cos(ph);
+      p.hue = Math.random() * 55 + 10;
+    });
+
+    playNovaSound();
+    flash("rgba(255, 170, 120, 0.22)", 170);
+
+    showGesture("FIST DETECTED", "Nova detonation fired", "#ff8e7f");
+    logCommand("Nova pulse executed", "#ffae96");
+  }
+
+  function project3D(x, y, z) {
+    const cosX = Math.cos(engine.rotX);
+    const sinX = Math.sin(engine.rotX);
+    const cosY = Math.cos(engine.rotY);
+    const sinY = Math.sin(engine.rotY);
+
+    const y2 = y * cosX - z * sinX;
+    const z2 = y * sinX + z * cosX;
+
+    const x3 = x * cosY + z2 * sinY;
+    const z3 = -x * sinY + z2 * cosY;
+
+    const fov = 420 * engine.zoom;
+    const scale = fov / (fov + z3 + 400);
+
+    return {
+      x: x3 * scale + engine.width / 2,
+      y: y2 * scale + engine.height / 2,
+      scale,
+      depth: z3
+    };
+  }
+
+  function drawStarfield(dt) {
+    stars.forEach((star) => {
+      star.twinkle += dt * 0.05;
+      const alpha = 0.2 + (Math.sin(star.twinkle) * 0.5 + 0.5) * 0.45;
+      const size = star.z * 1.8;
+      const x = star.x * engine.width;
+      const y = star.y * engine.height;
+
+      ctx.fillStyle = `rgba(165, 226, 255, ${alpha.toFixed(3)})`;
+      ctx.fillRect(x, y, size, size);
+    });
+  }
+
+  function drawHorizonGrid() {
+    const cx = engine.width / 2;
+    const cy = engine.height / 2 + 170;
+
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    ctx.strokeStyle = "rgba(120, 206, 255, 0.46)";
+    ctx.lineWidth = 1;
+
+    for (let i = 0; i < 17; i += 1) {
+      const depth = i / 16;
+      const y = lerp(cy + 180, cy - 210, Math.pow(depth, 1.55));
+      const half = lerp(engine.width * 0.56, 90, Math.pow(depth, 1.25));
+      ctx.beginPath();
+      ctx.moveTo(cx - half, y);
+      ctx.lineTo(cx + half, y);
+      ctx.stroke();
+    }
+
+    for (let i = -10; i <= 10; i += 1) {
+      const factor = i / 10;
+      ctx.beginPath();
+      ctx.moveTo(cx + factor * engine.width * 0.58, cy + 180);
+      ctx.lineTo(cx + factor * 80, cy - 210);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawCore() {
+    const cx = engine.width / 2;
+    const cy = engine.height / 2;
+
+    const pulse = 20 + Math.sin(engine.time * 2.2) * 4 * engine.energy;
+
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, pulse * 5);
+    glow.addColorStop(0, "rgba(220, 246, 255, 0.95)");
+    glow.addColorStop(0.2, "rgba(118, 214, 255, 0.72)");
+    glow.addColorStop(0.55, "rgba(64, 148, 255, 0.22)");
+    glow.addColorStop(1, "rgba(44, 94, 186, 0)");
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, pulse * 5, 0, TAU);
+    ctx.fillStyle = glow;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, pulse, 0, TAU);
+    ctx.fillStyle = "rgba(238, 251, 255, 0.92)";
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(163, 233, 255, 0.42)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, pulse * 1.8, 0, TAU);
+    ctx.stroke();
+  }
+
+  function drawRings() {
+    const cx = engine.width / 2;
+    const cy = engine.height / 2;
+
+    const rings = [
+      { radius: 200, width: 5, alpha: 0.18 },
+      { radius: 240, width: 2.2, alpha: 0.11 },
+      { radius: 280, width: 1.3, alpha: 0.08 }
+    ];
+
+    const yScale = Math.abs(Math.cos(engine.rotX)) * 0.2 + 0.06;
+
+    rings.forEach((ring, index) => {
+      const pulse = Math.sin(engine.time * 1.6 + index * 1.2) * 10 * engine.energy;
+      const r = (ring.radius + pulse) * engine.zoom;
+
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, r, r * yScale, engine.rotY, 0, TAU);
+      ctx.strokeStyle = `rgba(101, 200, 255, ${ring.alpha})`;
+      ctx.lineWidth = ring.width;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, r, r * yScale, engine.rotY, 0, TAU);
+      ctx.strokeStyle = `rgba(200, 241, 255, ${ring.alpha * 0.55})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+  }
+
+  function updateParticles(dt) {
+    const modeId = engine.modeDefs[engine.modeIndex].id;
+
+    if (engine.novaActive) {
+      engine.novaTimer += dt;
+      if (engine.novaTimer > 230) {
+        engine.novaActive = false;
+        resetParticlesForMode();
+      }
+    }
+
+    const projected = [];
+
+    for (let i = 0; i < particles.length; i += 1) {
+      const p = particles[i];
+      const t = engine.time + p.phase;
+
+      if (engine.novaActive) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.z += p.vz;
+        p.vx *= 0.982;
+        p.vy *= 0.982;
+        p.vz *= 0.982;
+      } else if (modeId === "orbital") {
+        p.x = p.ox + Math.sin(t * 1.4 + p.seed * 0.004) * 5;
+        p.y = p.oy + Math.cos(t * 1.1 + p.seed * 0.003) * 4;
+        p.z = p.oz + Math.sin(t * 0.9 + p.seed * 0.002) * 6;
+      } else if (modeId === "ionstorm") {
+        p.x = p.ox + Math.sin(t * 1.9 + p.oy * 0.012) * 30;
+        p.y = p.oy + Math.cos(t * 1.4 + p.oz * 0.008) * 26;
+        p.z = p.oz + Math.sin(t * 1.2 + p.ox * 0.01) * 34;
+      } else if (modeId === "warptunnel") {
+        const baseR = Math.sqrt(p.ox * p.ox + p.oy * p.oy) + 0.001;
+        const angle = Math.atan2(p.oy, p.ox) + t * 0.55;
+        const radial = baseR + Math.sin(t * 2.4 + p.seed * 0.003) * 22;
+        p.x = radial * Math.cos(angle);
+        p.y = radial * Math.sin(angle);
+        p.z = p.oz + Math.sin(t * 2.8 + p.seed * 0.002) * 25;
+      } else if (modeId === "lattice") {
+        p.x = p.ox + Math.sin(t * 2.6 + p.seed * 0.01) * 5;
+        p.y = p.oy + Math.cos(t * 2.1 + p.seed * 0.012) * 5;
+        p.z = p.oz + Math.sin(t * 1.8 + p.seed * 0.008) * 5;
+      } else if (modeId === "singularity") {
+        const radius = Math.sqrt(p.ox * p.ox + p.oz * p.oz) + 0.001;
+        const angle = Math.atan2(p.oz, p.ox) + t * 1.4;
+        const swirl = Math.max(22, radius * (0.72 + Math.sin(t * 0.6 + p.seed * 0.01) * 0.2));
+        p.x = Math.cos(angle) * swirl;
+        p.z = Math.sin(angle) * swirl;
+        p.y = p.oy * 0.4 + Math.sin(t * 2 + p.seed * 0.006) * 40;
+      }
+
+      const projectedPoint = project3D(p.x, p.y, p.z);
+      projected.push({ p, point: projectedPoint });
+    }
+
+    projected.sort((a, b) => a.point.depth - b.point.depth);
+
+    for (let i = 0; i < projected.length; i += 1) {
+      const { p, point } = projected[i];
+      const size = Math.max(0.1, p.size * point.scale * 2.8);
+      const brightness = clamp((point.depth + 540) / 650, 0, 1);
+
+      const hue = (p.hue + engine.hueShift + engine.time * (engine.modeDefs[engine.modeIndex].id === "warptunnel" ? 40 : 8)) % 360;
+      const alpha = 0.26 + brightness * 0.72;
+
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, size, 0, TAU);
+      ctx.fillStyle = `hsla(${hue}, 84%, ${52 + brightness * 28}%, ${alpha})`;
+      ctx.fill();
+
+      if (size > 1.4) {
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, size * 0.38, 0, TAU);
+        ctx.fillStyle = `hsla(${hue}, 28%, 95%, ${alpha * 0.95})`;
+        ctx.fill();
+      }
+    }
+  }
+
+  function drawWarpLines() {
+    if (engine.modeDefs[engine.modeIndex].id !== "warptunnel") {
+      return;
+    }
+
+    const cx = engine.width / 2;
+    const cy = engine.height / 2;
+
+    for (let i = 0; i < 120; i += 1) {
+      const angle = (i / 120) * TAU + engine.time * 0.65;
+      const len = 40 + Math.sin(i * 0.8 + engine.time * 2.2) * 65;
+
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(angle) * 26, cy + Math.sin(angle) * 26);
+      ctx.lineTo(cx + Math.cos(angle) * (26 + len), cy + Math.sin(angle) * (26 + len));
+      ctx.strokeStyle = `hsla(${190 + i * 1.2}, 84%, 70%, ${0.04 + Math.sin(engine.time + i * 0.4) * 0.03})`;
+      ctx.lineWidth = 0.9;
+      ctx.stroke();
+    }
+  }
+
+  function drawCenterReticle() {
+    const cx = engine.width / 2;
+    const cy = engine.height / 2;
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(145, 224, 255, 0.3)";
+    ctx.lineWidth = 1;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, 42, 0, TAU);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(cx - 60, cy);
+    ctx.lineTo(cx - 28, cy);
+    ctx.moveTo(cx + 28, cy);
+    ctx.lineTo(cx + 60, cy);
+    ctx.moveTo(cx, cy - 60);
+    ctx.lineTo(cx, cy - 28);
+    ctx.moveTo(cx, cy + 28);
+    ctx.lineTo(cx, cy + 60);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function animate(now) {
+    const dtRaw = (now - engine.lastTs) / 16.666;
+    const dt = clamp(dtRaw, 0.3, 2.2);
+    engine.lastTs = now;
+    engine.time += dt * 0.016;
+
+    engine.frameCounter += 1;
+    if (now - engine.fpsClock > 1000) {
+      engine.fps = engine.frameCounter;
+      engine.frameCounter = 0;
+      engine.fpsClock = now;
+      fpsValueEl.textContent = String(engine.fps);
+    }
+
+    if (engine.autoPilot) {
+      const targetX = 0.33 + Math.sin(engine.time * 0.25) * 0.08;
+      engine.rotX = lerp(engine.rotX, targetX, 0.02 * dt);
+      engine.spinMomentumY += 0.00095 * dt;
+      spinValueEl.textContent = "AUTO";
+    }
+
+    engine.rotX += engine.spinMomentumX;
+    engine.rotY += engine.spinMomentumY;
+
+    engine.spinMomentumX *= 0.935;
+    engine.spinMomentumY *= 0.94;
+    engine.rotX = clamp(engine.rotX, -1.15, 1.15);
+
+    engine.energy = lerp(engine.energy, 1, 0.008 * dt);
+
+    ctx.fillStyle = "rgba(2, 6, 14, 0.2)";
+    ctx.fillRect(0, 0, engine.width, engine.height);
+
+    drawStarfield(dt);
+    drawHorizonGrid();
+    updateParticles(dt * 60);
+    drawRings();
+    drawCore();
+    drawWarpLines();
+    drawCenterReticle();
+
+    zoomValueEl.textContent = `${engine.zoom.toFixed(2)}x`;
+    energyValueEl.textContent = `${Math.round(engine.energy * 100)}%`;
+
+    requestAnimationFrame(animate);
+  }
+
+  requestAnimationFrame(animate);
+
+  const hand = {
+    model: null,
+    camera: null,
+    enabled: false,
+    lastGesture: "NEUTRAL",
+    stableGesture: "NEUTRAL",
+    history: [],
+    cooldowns: {
+      nova: 0,
+      mode: 0,
+      autopilot: 0,
+      audio: 0,
+      swipe: 0,
+      pinchTone: 0
+    },
+    lastPalm: null,
+    smoothPalm: null,
+    lastPinch: null,
+    lastSeenAt: 0
+  };
+
+  const connectorPairs = [
+    [0, 1], [1, 2], [2, 3], [3, 4],
+    [0, 5], [5, 6], [6, 7], [7, 8],
+    [5, 9], [9, 10], [10, 11], [11, 12],
+    [9, 13], [13, 14], [14, 15], [15, 16],
+    [13, 17], [17, 18], [18, 19], [19, 20],
+    [0, 17]
+  ];
+
+  const gestureColorMap = {
+    OPEN_PALM: "#84ffd8",
+    FIST: "#ff8c80",
+    ONE_FINGER: "#7ecfff",
+    TWO_FINGERS: "#e6a2ff",
+    THREE_FINGERS: "#f6d48f",
+    PINCH: "#ffe48b",
+    THUMBS_UP: "#9af3a3",
+    NEUTRAL: "#86adc9"
+  };
+
+  const gestureText = {
+    OPEN_PALM: { title: "OPEN PALM", description: "Direct rotation control" },
+    FIST: { title: "FIST", description: "Nova burst trigger" },
+    ONE_FINGER: { title: "ONE FINGER", description: "Cycle simulation mode" },
+    TWO_FINGERS: { title: "TWO FINGERS", description: "Spectral hue shift" },
+    THREE_FINGERS: { title: "THREE FINGERS", description: "Toggle immersive audio" },
+    PINCH: { title: "PINCH", description: "Precision zoom control" },
+    THUMBS_UP: { title: "THUMBS UP", description: "Autopilot toggle" },
+    NEUTRAL: { title: "NEUTRAL", description: "Tracking idle" }
+  };
+
+  function distance2D(a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function isFingerExtended(lm, tip, pip, mcp) {
+    const tipToMcp = distance2D(lm[tip], lm[mcp]);
+    const pipToMcp = distance2D(lm[pip], lm[mcp]);
+    return tipToMcp > pipToMcp * 1.14 && lm[tip].y < lm[pip].y - 0.012;
+  }
+
+  function classifyGesture(landmarks) {
+    const indexUp = isFingerExtended(landmarks, 8, 6, 5);
+    const middleUp = isFingerExtended(landmarks, 12, 10, 9);
+    const ringUp = isFingerExtended(landmarks, 16, 14, 13);
+    const pinkyUp = isFingerExtended(landmarks, 20, 18, 17);
+
+    const thumbSpread = distance2D(landmarks[4], landmarks[2]) > distance2D(landmarks[3], landmarks[2]) * 1.2;
+    const thumbUp = landmarks[4].y < landmarks[3].y - 0.02;
+
+    const pinchDist = distance2D(landmarks[4], landmarks[8]);
+    if (pinchDist < 0.055) {
+      return { name: "PINCH", pinchDist };
+    }
+
+    const extCount = [indexUp, middleUp, ringUp, pinkyUp].filter(Boolean).length;
+    const thumbsUp = thumbUp && thumbSpread && !indexUp && !middleUp && !ringUp && !pinkyUp;
+
+    if (thumbsUp) {
+      return { name: "THUMBS_UP", pinchDist };
+    }
+
+    if (extCount === 0 && !thumbSpread) {
+      return { name: "FIST", pinchDist };
+    }
+
+    if (indexUp && !middleUp && !ringUp && !pinkyUp) {
+      return { name: "ONE_FINGER", pinchDist };
+    }
+
+    if (indexUp && middleUp && !ringUp && !pinkyUp) {
+      return { name: "TWO_FINGERS", pinchDist };
+    }
+
+    if (indexUp && middleUp && ringUp && !pinkyUp) {
+      return { name: "THREE_FINGERS", pinchDist };
+    }
+
+    if (extCount >= 3) {
+      return { name: "OPEN_PALM", pinchDist };
+    }
+
+    return { name: "NEUTRAL", pinchDist };
+  }
+
+  function stabilizeGesture(rawName) {
+    hand.history.push(rawName);
+    if (hand.history.length > 8) {
+      hand.history.shift();
+    }
+
+    const counts = {};
+    hand.history.forEach((value) => {
+      counts[value] = (counts[value] || 0) + 1;
+    });
+
+    let bestName = rawName;
+    let bestCount = 0;
+
+    Object.keys(counts).forEach((name) => {
+      if (counts[name] > bestCount) {
+        bestName = name;
+        bestCount = counts[name];
+      }
+    });
+
+    return bestCount >= 4 ? bestName : rawName;
+  }
+
+  function drawHandOverlay(results, landmarks, gestureName) {
+    hctx.clearRect(0, 0, handCanvas.width, handCanvas.height);
+
+    if (results.image) {
+      hctx.save();
+      hctx.scale(-1, 1);
+      hctx.translate(-handCanvas.width, 0);
+      hctx.drawImage(results.image, 0, 0, handCanvas.width, handCanvas.height);
+      hctx.restore();
+
+      hctx.fillStyle = "rgba(5, 12, 24, 0.52)";
+      hctx.fillRect(0, 0, handCanvas.width, handCanvas.height);
+    }
+
+    if (!landmarks) {
+      hctx.fillStyle = "rgba(121, 168, 206, 0.85)";
+      hctx.font = '12px "Space Grotesk", sans-serif';
+      hctx.textAlign = "center";
+      hctx.fillText("No hand detected", handCanvas.width / 2, handCanvas.height / 2);
+      return;
+    }
+
+    const color = gestureColorMap[gestureName] || "#8db4d1";
+
+    hctx.strokeStyle = color;
+    hctx.lineWidth = 1.5;
+
+    connectorPairs.forEach(([a, b]) => {
+      const pa = landmarks[a];
+      const pb = landmarks[b];
+
+      const x1 = (1 - pa.x) * handCanvas.width;
+      const y1 = pa.y * handCanvas.height;
+      const x2 = (1 - pb.x) * handCanvas.width;
+      const y2 = pb.y * handCanvas.height;
+
+      hctx.beginPath();
+      hctx.moveTo(x1, y1);
+      hctx.lineTo(x2, y2);
+      hctx.stroke();
+    });
+
+    for (let i = 0; i < landmarks.length; i += 1) {
+      const point = landmarks[i];
+      const x = (1 - point.x) * handCanvas.width;
+      const y = point.y * handCanvas.height;
+      const radius = i === 0 ? 4 : 2.5;
+
+      hctx.beginPath();
+      hctx.arc(x, y, radius, 0, TAU);
+      hctx.fillStyle = i === 0 ? "rgba(241, 252, 255, 0.95)" : color;
+      hctx.fill();
+    }
+
+    hctx.fillStyle = "rgba(5, 12, 24, 0.7)";
+    hctx.fillRect(0, handCanvas.height - 24, handCanvas.width, 24);
+    hctx.fillStyle = color;
+    hctx.font = '11px "Space Grotesk", sans-serif';
+    hctx.textAlign = "center";
+    hctx.fillText(gestureText[gestureName].title, handCanvas.width / 2, handCanvas.height - 8);
+  }
+
+  function updateReticle(xNorm, yNorm, gestureName) {
+    const color = gestureColorMap[gestureName] || "#84ffd8";
+
+    handReticle.style.opacity = "1";
+    handReticle.style.borderColor = color;
+    handReticle.style.left = `${xNorm * engine.width - 37}px`;
+    handReticle.style.top = `${yNorm * engine.height - 37}px`;
+    handReticle.style.boxShadow = `0 0 26px ${color}70, inset 0 0 16px ${color}33`;
+  }
+
+  function applyGestureLogic(gestureName, pinchDist, palm) {
+    Object.keys(hand.cooldowns).forEach((key) => {
+      hand.cooldowns[key] = Math.max(0, hand.cooldowns[key] - 1);
+    });
+
+    if (gestureName === "OPEN_PALM") {
+      engine.autoPilot = false;
+      spinValueEl.textContent = "HAND";
+      spinValueEl.style.color = "#89f6da";
+
+      if (hand.lastPalm) {
+        const dx = palm.x - hand.lastPalm.x;
+        const dy = palm.y - hand.lastPalm.y;
+        const speed = Math.sqrt(dx * dx + dy * dy);
+
+        engine.spinMomentumY += -dx * 0.52;
+        engine.spinMomentumX += dy * 0.36;
+
+        if (hand.cooldowns.swipe === 0 && Math.abs(dx) > 0.026 && speed > 0.027) {
+          const direction = dx > 0 ? 1 : -1;
+          engine.spinMomentumY += -direction * 0.58;
+          hand.cooldowns.swipe = 26;
+          showGesture(direction > 0 ? "SWIPE RIGHT" : "SWIPE LEFT", "Kinetic spin impulse", "#84f3ff");
+          playSwipeSound(direction);
+          flash("rgba(120, 200, 255, 0.12)", 90);
+        }
+
+        updateMotionAudio(speed, palm.x);
+      }
+
+      hand.lastPalm = { x: palm.x, y: palm.y };
+      hand.lastPinch = null;
+
+      if (hand.lastGesture !== "OPEN_PALM") {
+        showGesture("OPEN PALM", "Manual rotation engaged", "#84ffd8");
+        logCommand("Manual rotation lock", "#8fffd9");
+      }
+      return;
+    }
+
+    if (gestureName === "PINCH") {
+      engine.autoPilot = false;
+      spinValueEl.textContent = "HAND";
+      spinValueEl.style.color = "#89f6da";
+
+      if (hand.lastPinch !== null) {
+        const delta = pinchDist - hand.lastPinch;
+        engine.zoom = clamp(engine.zoom - delta * 5.9, 0.52, 2.8);
+        engine.energy = clamp(engine.energy + (-delta) * 1.1, 0.6, 1.8);
+
+        if (Math.abs(delta) > 0.0024 && hand.cooldowns.pinchTone === 0) {
+          playPinchSound(delta < 0 ? 1 : -1);
+          hand.cooldowns.pinchTone = 8;
+        }
+      }
+
+      hand.lastPinch = pinchDist;
+      hand.lastPalm = null;
+
+      if (hand.lastGesture !== "PINCH") {
+        showGesture("PINCH", "Zoom and focus shaping", "#ffe497");
+        logCommand("Zoom lane armed", "#ffe7a8");
+      }
+      return;
+    }
+
+    hand.lastPinch = null;
+    hand.lastPalm = null;
+
+    if (gestureName === "ONE_FINGER") {
+      if (hand.cooldowns.mode === 0) {
+        setMode(engine.modeIndex + 1, "gesture");
+        hand.cooldowns.mode = 38;
+        showGesture("ONE FINGER", `Mode -> ${engine.modeDefs[engine.modeIndex].label}`, "#83d3ff");
+      }
+      return;
+    }
+
+    if (gestureName === "TWO_FINGERS") {
+      engine.hueShift = (engine.hueShift + 2.2) % 360;
+      engine.energy = clamp(engine.energy + 0.004, 0.8, 1.7);
+
+      if (hand.lastGesture !== "TWO_FINGERS") {
+        showGesture("TWO FINGERS", "Spectrum phase shift", "#e0a4ff");
+        logCommand("Hue spectrum drift", "#ecb9ff");
+      }
+
+      if (hand.cooldowns.pinchTone === 0) {
+        playHueSound();
+        hand.cooldowns.pinchTone = 6;
+      }
+      return;
+    }
+
+    if (gestureName === "THREE_FINGERS") {
+      if (hand.cooldowns.audio === 0) {
+        setAudioMuted(!audio.muted);
+        playToggleSound(!audio.muted);
+        hand.cooldowns.audio = 44;
+        showGesture("THREE FINGERS", audio.muted ? "Audio muted" : "Audio restored", "#f8d997");
+      }
+      return;
+    }
+
+    if (gestureName === "THUMBS_UP") {
+      if (hand.cooldowns.autopilot === 0) {
+        engine.autoPilot = !engine.autoPilot;
+        hand.cooldowns.autopilot = 50;
+
+        showGesture("THUMBS UP", engine.autoPilot ? "Autopilot online" : "Autopilot disabled", "#96f6a9");
+        logCommand(engine.autoPilot ? "Autopilot enabled" : "Autopilot disabled", "#a3f5b0");
+        playToggleSound(engine.autoPilot);
+
+        if (engine.autoPilot) {
+          spinValueEl.textContent = "AUTO";
+          spinValueEl.style.color = "#96dbff";
+        }
+      }
+      return;
+    }
+
+    if (gestureName === "FIST") {
+      if (hand.cooldowns.nova === 0 && !engine.novaActive) {
+        triggerNova();
+        hand.cooldowns.nova = 110;
+      }
+      return;
+    }
+
+    if (gestureName === "NEUTRAL") {
+      updateMotionAudio(0, 0.5);
+      if (hand.lastGesture === "OPEN_PALM" || hand.lastGesture === "PINCH") {
+        spinValueEl.textContent = engine.autoPilot ? "AUTO" : "INERTIA";
+        spinValueEl.style.color = engine.autoPilot ? "#96dbff" : "#ffdca8";
+      }
+    }
+  }
+
+  function processHandResults(results) {
+    const hasHands = results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
+
+    if (!hasHands) {
+      drawHandOverlay(results, null, "NEUTRAL");
+      handReticle.style.opacity = "0";
+      hand.history.length = 0;
+      hand.lastPalm = null;
+      hand.lastPinch = null;
+
+      handStatusEl.textContent = hand.enabled ? "HAND LINK: SEARCHING" : "HAND LINK: OFFLINE";
+      handStatusEl.style.color = hand.enabled ? "#ffd7a2" : "#99b9d4";
+
+      if (hand.enabled && performance.now() - hand.lastSeenAt > 2200 && !engine.autoPilot) {
+        engine.autoPilot = true;
+        spinValueEl.textContent = "AUTO";
+        spinValueEl.style.color = "#96dbff";
+      }
+
+      updateMotionAudio(0, 0.5);
+      hand.lastGesture = "NEUTRAL";
+      return;
+    }
+
+    hand.lastSeenAt = performance.now();
+
+    const landmarks = results.multiHandLandmarks[0];
+    const classification = classifyGesture(landmarks);
+    const stable = stabilizeGesture(classification.name);
+    hand.stableGesture = stable;
+
+    drawHandOverlay(results, landmarks, stable);
+
+    const palmIndices = [0, 5, 9, 13, 17];
+    let palmX = 0;
+    let palmY = 0;
+    for (let i = 0; i < palmIndices.length; i += 1) {
+      palmX += landmarks[palmIndices[i]].x;
+      palmY += landmarks[palmIndices[i]].y;
+    }
+    palmX /= palmIndices.length;
+    palmY /= palmIndices.length;
+
+    if (!hand.smoothPalm) {
+      hand.smoothPalm = { x: palmX, y: palmY };
+    } else {
+      hand.smoothPalm.x = lerp(hand.smoothPalm.x, palmX, 0.32);
+      hand.smoothPalm.y = lerp(hand.smoothPalm.y, palmY, 0.32);
+    }
+
+    updateReticle(1 - hand.smoothPalm.x, hand.smoothPalm.y, stable);
+
+    handStatusEl.textContent = "HAND LINK: ACTIVE";
+    handStatusEl.style.color = "#92ffd4";
+
+    applyGestureLogic(stable, classification.pinchDist, {
+      x: 1 - hand.smoothPalm.x,
+      y: hand.smoothPalm.y
+    });
+
+    if (stable !== hand.lastGesture) {
+      const text = gestureText[stable] || gestureText.NEUTRAL;
+      showGesture(text.title, text.description, gestureColorMap[stable] || "#a7cee9");
+    }
+
+    hand.lastGesture = stable;
+  }
+
+  async function startHandTracking() {
+    startBtn.disabled = true;
+    ensureAudio();
+
+    function setLoading(progress, text) {
+      loadingFill.style.width = `${progress}%`;
+      loadingLabel.textContent = text;
+    }
+
+    loadingOverlay.classList.add("active");
+    setLoading(8, "Booting audio matrix...");
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Camera API is not available in this browser.");
+      }
+
+      if (typeof Hands === "undefined" || typeof Camera === "undefined") {
+        throw new Error("MediaPipe libraries failed to load. Check your network and reload.");
+      }
+
+      setLoading(22, "Requesting camera permissions...");
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: "user"
+        },
+        audio: false
+      });
+
+      camFeed.srcObject = stream;
+
+      setLoading(46, "Compiling hand landmark model...");
+      hand.model = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
+      });
+
+      hand.model.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.72,
+        minTrackingConfidence: 0.66
+      });
+
+      hand.model.onResults(processHandResults);
+
+      setLoading(78, "Synchronizing neural hand link...");
+      hand.camera = new Camera(camFeed, {
+        onFrame: async () => {
+          await hand.model.send({ image: camFeed });
+        },
+        width: 640,
+        height: 480
+      });
+
+      await hand.camera.start();
+      hand.enabled = true;
+      engine.handLinked = true;
+
+      setLoading(100, "Neural link stabilized.");
+
+      showGesture("HAND LINKED", "All controls are now gesture-driven", "#81ffd7");
+      logCommand("Hand tracking online", "#8fffd8");
+      playToggleSound(true);
+      flash("rgba(120, 255, 214, 0.18)", 140);
+
+      window.setTimeout(() => {
+        loadingOverlay.classList.remove("active");
+        startOverlay.style.opacity = "0";
+        startOverlay.style.pointerEvents = "none";
+      }, 260);
+
+      window.setTimeout(() => {
+        startOverlay.style.display = "none";
+      }, 560);
+    } catch (error) {
+      startBtn.disabled = false;
+      loadingOverlay.classList.remove("active");
+      showGesture("CAMERA ERROR", "Allow camera access and reload", "#ff9f92");
+      logCommand(`Boot error: ${error.message}`, "#ffb8a6");
+      handStatusEl.textContent = "HAND LINK: ERROR";
+      handStatusEl.style.color = "#ffaf9f";
+      console.error(error);
+    }
+  }
+
+  startBtn.addEventListener("click", startHandTracking);
+
+  setMode(0, "system");
+  showGesture("READY", "Press enable to start neural hand control", "#95d9ff");
+
+  logCommand("Engine online", "#93d8ff");
+  logCommand("Particle matrix calibrated", "#93d8ff");
+  logCommand("Awaiting hand-link activation", "#a6cae6");
+})();
+</script>
+</body>
+</html>
