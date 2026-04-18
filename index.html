@@ -518,7 +518,7 @@ body {
     </article>
     <article class="gestureCard">
       <span class="gestureTag">Pinch</span>
-      <p class="gestureHint">Precision zoom and focus energy shaping.</p>
+      <p class="gestureHint">Stable dolly zoom with hysteresis and depth-lock.</p>
     </article>
     <article class="gestureCard">
       <span class="gestureTag">One Finger</span>
@@ -559,7 +559,7 @@ body {
     <h2>Hand Control Runtime</h2>
     <p>
       This build is now fully hand-driven after activation: movement, mode switching, zoom, audio toggle,
-      and nova events all run from gestures.
+      nova events, and cinematic depth effects all run from gestures.
     </p>
     <button id="startBtn">Enable Neural Hand Control</button>
     <div id="startTiny">Camera permission is required. Best used in a bright room with one hand in frame.</div>
@@ -631,11 +631,18 @@ body {
     rotX: 0.32,
     rotY: 0.18,
     zoom: 1.05,
+    zoomTarget: 1.05,
+    zoomVelocity: 0,
     hueShift: 0,
     energy: 1,
     autoPilot: true,
     spinMomentumX: 0,
     spinMomentumY: 0,
+    parallaxX: 0,
+    parallaxY: 0,
+    targetParallaxX: 0,
+    targetParallaxY: 0,
+    pulsePhase: 0,
     novaActive: false,
     novaTimer: 0,
     handLinked: false
@@ -693,11 +700,18 @@ body {
     dryBus: null,
     fxBus: null,
     ambientGain: null,
+    modeFilter: null,
+    airGain: null,
+    orbitGain: null,
+    orbitPanner: null,
+    orbitOsc: null,
     motionGain: null,
     motionFilter: null,
     motionPanner: null,
     motionTone: null,
-    motionToneGain: null
+    motionToneGain: null,
+    zoomGain: null,
+    zoomFilter: null
   };
 
   function createNoiseBuffer(context, seconds = 2) {
@@ -705,6 +719,30 @@ body {
     const data = buffer.getChannelData(0);
     for (let i = 0; i < data.length; i += 1) {
       data[i] = Math.random() * 2 - 1;
+    }
+    return buffer;
+  }
+
+  function createPinkNoiseBuffer(context, seconds = 2) {
+    const buffer = context.createBuffer(1, Math.floor(context.sampleRate * seconds), context.sampleRate);
+    const data = buffer.getChannelData(0);
+    let b0 = 0;
+    let b1 = 0;
+    let b2 = 0;
+    let b3 = 0;
+    let b4 = 0;
+    let b5 = 0;
+    let b6 = 0;
+    for (let i = 0; i < data.length; i += 1) {
+      const white = Math.random() * 2 - 1;
+      b0 = 0.99886 * b0 + white * 0.0555179;
+      b1 = 0.99332 * b1 + white * 0.0750759;
+      b2 = 0.969 * b2 + white * 0.153852;
+      b3 = 0.8665 * b3 + white * 0.3104856;
+      b4 = 0.55 * b4 + white * 0.5329522;
+      b5 = -0.7616 * b5 - white * 0.016898;
+      data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
+      b6 = white * 0.115926;
     }
     return buffer;
   }
@@ -756,70 +794,97 @@ body {
     convolver.buffer = createImpulseResponse(audio.ctx);
 
     audio.fxBus = audio.ctx.createGain();
-    audio.fxBus.gain.value = 0.34;
+    audio.fxBus.gain.value = 0.28;
+
+    const delay = audio.ctx.createDelay(0.4);
+    const delayFeedback = audio.ctx.createGain();
+    const delayMix = audio.ctx.createGain();
+    delay.delayTime.value = 0.18;
+    delayFeedback.gain.value = 0.26;
+    delayMix.gain.value = 0.18;
 
     audio.dryBus.connect(audio.master);
     audio.fxBus.connect(convolver);
+    audio.fxBus.connect(delay);
+    delay.connect(delayFeedback);
+    delayFeedback.connect(delay);
+    delay.connect(delayMix);
     convolver.connect(audio.master);
+    delayMix.connect(audio.master);
     audio.master.connect(compressor);
     compressor.connect(audio.ctx.destination);
 
+    audio.modeFilter = audio.ctx.createBiquadFilter();
+    audio.modeFilter.type = "lowpass";
+    audio.modeFilter.frequency.value = 860;
+    audio.modeFilter.Q.value = 0.8;
+
     audio.ambientGain = audio.ctx.createGain();
-    audio.ambientGain.gain.value = 0.07;
+    audio.ambientGain.gain.value = 0.075;
+    audio.modeFilter.connect(audio.ambientGain);
     audio.ambientGain.connect(audio.dryBus);
 
     const droneA = audio.ctx.createOscillator();
     const droneB = audio.ctx.createOscillator();
+    const subDrone = audio.ctx.createOscillator();
     const shimmer = audio.ctx.createOscillator();
 
     droneA.type = "sawtooth";
-    droneA.frequency.value = 44;
+    droneA.frequency.value = 41;
     droneB.type = "triangle";
-    droneB.frequency.value = 88;
+    droneB.frequency.value = 79;
+    subDrone.type = "sine";
+    subDrone.frequency.value = 28;
     shimmer.type = "sine";
-    shimmer.frequency.value = 352;
+    shimmer.frequency.value = 286;
 
     const droneFilter = audio.ctx.createBiquadFilter();
     droneFilter.type = "lowpass";
-    droneFilter.frequency.value = 260;
-    droneFilter.Q.value = 0.7;
+    droneFilter.frequency.value = 320;
+    droneFilter.Q.value = 0.86;
+
+    const droneGain = audio.ctx.createGain();
+    droneGain.gain.value = 0.3;
 
     const shimmerGain = audio.ctx.createGain();
-    shimmerGain.gain.value = 0.016;
+    shimmerGain.gain.value = 0.014;
 
     const ambientLfo = audio.ctx.createOscillator();
     const ambientLfoGain = audio.ctx.createGain();
     ambientLfo.frequency.value = 0.08;
-    ambientLfoGain.gain.value = 72;
+    ambientLfoGain.gain.value = 92;
 
     ambientLfo.connect(ambientLfoGain);
     ambientLfoGain.connect(droneFilter.frequency);
+    ambientLfoGain.connect(shimmer.frequency);
 
     droneA.connect(droneFilter);
     droneB.connect(droneFilter);
-    droneFilter.connect(audio.ambientGain);
+    subDrone.connect(droneFilter);
+    droneFilter.connect(droneGain);
+    droneGain.connect(audio.modeFilter);
 
     shimmer.connect(shimmerGain);
     shimmerGain.connect(audio.fxBus);
 
-    const noiseSource = audio.ctx.createBufferSource();
-    noiseSource.buffer = createNoiseBuffer(audio.ctx, 3);
-    noiseSource.loop = true;
+    const airNoise = audio.ctx.createBufferSource();
+    airNoise.buffer = createPinkNoiseBuffer(audio.ctx, 3);
+    airNoise.loop = true;
 
-    const noiseFilter = audio.ctx.createBiquadFilter();
-    noiseFilter.type = "bandpass";
-    noiseFilter.frequency.value = 840;
-    noiseFilter.Q.value = 0.55;
+    const airFilter = audio.ctx.createBiquadFilter();
+    airFilter.type = "bandpass";
+    airFilter.frequency.value = 920;
+    airFilter.Q.value = 0.55;
 
-    const noiseGain = audio.ctx.createGain();
-    noiseGain.gain.value = 0.01;
+    audio.airGain = audio.ctx.createGain();
+    audio.airGain.gain.value = 0.015;
 
-    noiseSource.connect(noiseFilter);
-    noiseFilter.connect(noiseGain);
-    noiseGain.connect(audio.ambientGain);
+    airNoise.connect(airFilter);
+    airFilter.connect(audio.airGain);
+    audio.airGain.connect(audio.modeFilter);
 
     const motionNoise = audio.ctx.createBufferSource();
-    motionNoise.buffer = createNoiseBuffer(audio.ctx, 2);
+    motionNoise.buffer = createPinkNoiseBuffer(audio.ctx, 2);
     motionNoise.loop = true;
 
     audio.motionFilter = audio.ctx.createBiquadFilter();
@@ -848,12 +913,41 @@ body {
 
     audio.motionPanner.connect(audio.dryBus);
 
+    const zoomNoise = audio.ctx.createBufferSource();
+    zoomNoise.buffer = createPinkNoiseBuffer(audio.ctx, 2.2);
+    zoomNoise.loop = true;
+
+    audio.zoomFilter = audio.ctx.createBiquadFilter();
+    audio.zoomFilter.type = "bandpass";
+    audio.zoomFilter.frequency.value = 1400;
+    audio.zoomFilter.Q.value = 0.85;
+
+    audio.zoomGain = audio.ctx.createGain();
+    audio.zoomGain.gain.value = 0;
+
+    zoomNoise.connect(audio.zoomFilter);
+    audio.zoomFilter.connect(audio.zoomGain);
+    audio.zoomGain.connect(audio.motionPanner);
+
+    audio.orbitOsc = audio.ctx.createOscillator();
+    audio.orbitOsc.type = "sine";
+    audio.orbitOsc.frequency.value = 170;
+    audio.orbitPanner = audio.ctx.createStereoPanner();
+    audio.orbitGain = audio.ctx.createGain();
+    audio.orbitGain.gain.value = 0.0;
+    audio.orbitOsc.connect(audio.orbitGain);
+    audio.orbitGain.connect(audio.orbitPanner);
+    audio.orbitPanner.connect(audio.fxBus);
+
     droneA.start();
     droneB.start();
+    subDrone.start();
     shimmer.start();
     ambientLfo.start();
-    noiseSource.start();
+    airNoise.start();
     motionNoise.start();
+    zoomNoise.start();
+    audio.orbitOsc.start();
     audio.motionTone.start();
 
     audio.initialized = true;
@@ -990,15 +1084,61 @@ body {
     }
 
     const now = audio.ctx.currentTime;
-    const intensity = clamp(speed * 16, 0, 1.2);
-    const targetNoise = audio.muted ? 0 : 0.006 + intensity * 0.09;
-    const targetTone = audio.muted ? 0 : intensity * 0.028;
+    const intensity = clamp(speed * 15.5, 0, 1.25);
+    const targetNoise = audio.muted ? 0 : 0.005 + intensity * 0.074;
+    const targetTone = audio.muted ? 0 : intensity * 0.021;
 
     audio.motionGain.gain.linearRampToValueAtTime(targetNoise, now + 0.05);
     audio.motionToneGain.gain.linearRampToValueAtTime(targetTone, now + 0.05);
-    audio.motionFilter.frequency.linearRampToValueAtTime(280 + intensity * 1800, now + 0.05);
-    audio.motionTone.frequency.linearRampToValueAtTime(110 + intensity * 520, now + 0.05);
+    audio.motionFilter.frequency.linearRampToValueAtTime(250 + intensity * 1720, now + 0.05);
+    audio.motionTone.frequency.linearRampToValueAtTime(96 + intensity * 450, now + 0.05);
     audio.motionPanner.pan.linearRampToValueAtTime(clamp((xNorm - 0.5) * 1.8, -1, 1), now + 0.05);
+  }
+
+  function updateModeSoundscape() {
+    if (!audio.initialized) {
+      return;
+    }
+
+    const now = audio.ctx.currentTime;
+    const modeId = engine.modeDefs[engine.modeIndex].id;
+    const profileMap = {
+      orbital: { cutoff: 760, air: 0.013, orbit: 0.014, detune: 0 },
+      ionstorm: { cutoff: 1700, air: 0.02, orbit: 0.023, detune: 12 },
+      warptunnel: { cutoff: 2100, air: 0.028, orbit: 0.03, detune: 24 },
+      lattice: { cutoff: 1180, air: 0.016, orbit: 0.02, detune: -10 },
+      singularity: { cutoff: 540, air: 0.011, orbit: 0.026, detune: -34 }
+    };
+    const profile = profileMap[modeId] || profileMap.orbital;
+
+    const targetCutoff = profile.cutoff + engine.energy * 160 + engine.zoom * 30;
+    const targetAir = audio.muted ? 0 : profile.air + engine.energy * 0.002;
+    const targetOrbit = audio.muted ? 0 : profile.orbit + Math.abs(engine.zoomVelocity) * 0.05;
+    const orbitPan = clamp(Math.sin(engine.rotY * 0.62) * 0.9 + engine.parallaxX / 140, -1, 1);
+
+    audio.modeFilter.frequency.linearRampToValueAtTime(targetCutoff, now + 0.08);
+    audio.airGain.gain.linearRampToValueAtTime(targetAir, now + 0.08);
+    audio.orbitGain.gain.linearRampToValueAtTime(targetOrbit, now + 0.08);
+    audio.orbitPanner.pan.linearRampToValueAtTime(orbitPan, now + 0.08);
+    audio.motionTone.detune.linearRampToValueAtTime(profile.detune + Math.sin(engine.time * 0.9) * 7, now + 0.08);
+  }
+
+  function updateZoomAudio(zoomDelta, xNorm) {
+    if (!audio.initialized) {
+      return;
+    }
+
+    const now = audio.ctx.currentTime;
+    const intensity = clamp(Math.abs(zoomDelta) * 90, 0, 1.3);
+    const targetGain = audio.muted ? 0 : intensity * 0.036;
+    const targetFreq = 900 + intensity * 2100;
+    const targetQ = 0.7 + intensity * 2.5;
+    const pan = clamp((xNorm - 0.5) * 1.8, -1, 1);
+
+    audio.zoomGain.gain.linearRampToValueAtTime(targetGain, now + 0.06);
+    audio.zoomFilter.frequency.linearRampToValueAtTime(targetFreq, now + 0.06);
+    audio.zoomFilter.Q.linearRampToValueAtTime(targetQ, now + 0.06);
+    audio.motionPanner.pan.linearRampToValueAtTime(pan, now + 0.06);
   }
 
   function setAudioMuted(value) {
@@ -1045,7 +1185,7 @@ body {
     }
   }
 
-  const PARTICLE_COUNT = 3200;
+  const PARTICLE_COUNT = window.innerWidth < 860 ? 2800 : 3800;
   const particles = Array.from({ length: PARTICLE_COUNT }, () => new Particle());
 
   const stars = Array.from({ length: 220 }, () => ({
@@ -1054,6 +1194,22 @@ body {
     z: Math.random() * 0.6 + 0.2,
     twinkle: Math.random() * TAU
   }));
+
+  const plasmaNodes = Array.from({ length: 14 }, () => ({
+    angle: Math.random() * TAU,
+    radius: 120 + Math.random() * 220,
+    drift: 0.18 + Math.random() * 0.52,
+    hue: 170 + Math.random() * 90,
+    spread: 75 + Math.random() * 120,
+    wobble: Math.random() * TAU
+  }));
+
+  function getCenter() {
+    return {
+      cx: engine.width / 2 + engine.parallaxX * 0.58,
+      cy: engine.height / 2 + engine.parallaxY * 0.42
+    };
+  }
 
   function resetParticlesForMode() {
     particles.forEach((p) => {
@@ -1137,12 +1293,15 @@ body {
     const x3 = x * cosY + z2 * sinY;
     const z3 = -x * sinY + z2 * cosY;
 
-    const fov = 420 * engine.zoom;
+    const fov = (390 + engine.zoom * 38) * engine.zoom;
     const scale = fov / (fov + z3 + 400);
+    const radial = Math.sqrt(x3 * x3 + y2 * y2);
+    const lens = 1 + clamp((radial / 540) * (0.09 + engine.energy * 0.06), 0, 0.18);
+    const center = getCenter();
 
     return {
-      x: x3 * scale + engine.width / 2,
-      y: y2 * scale + engine.height / 2,
+      x: x3 * scale * lens + center.cx,
+      y: y2 * scale * lens + center.cy,
       scale,
       depth: z3
     };
@@ -1162,8 +1321,9 @@ body {
   }
 
   function drawHorizonGrid() {
-    const cx = engine.width / 2;
-    const cy = engine.height / 2 + 170;
+    const center = getCenter();
+    const cx = center.cx;
+    const cy = center.cy + 170;
 
     ctx.save();
     ctx.globalAlpha = 0.22;
@@ -1191,20 +1351,49 @@ body {
     ctx.restore();
   }
 
+  function drawPlasmaClouds() {
+    const center = getCenter();
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    plasmaNodes.forEach((node, index) => {
+      const t = engine.time * node.drift + node.wobble;
+      const orbitRadius = node.radius + Math.sin(engine.time * 0.5 + index) * 28;
+      const x = center.cx + Math.cos(t) * orbitRadius;
+      const y = center.cy + Math.sin(t * 1.15) * (orbitRadius * 0.35);
+      const spread = node.spread * (0.86 + Math.sin(engine.time * 0.7 + index) * 0.2);
+
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, spread * engine.zoom);
+      const hue = (node.hue + engine.hueShift + engine.time * 8) % 360;
+      gradient.addColorStop(0, `hsla(${hue}, 95%, 70%, ${0.075 + engine.energy * 0.04})`);
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(x, y, spread * engine.zoom, 0, TAU);
+      ctx.fill();
+    });
+
+    ctx.restore();
+  }
+
   function drawCore() {
-    const cx = engine.width / 2;
-    const cy = engine.height / 2;
+    const center = getCenter();
+    const cx = center.cx;
+    const cy = center.cy;
 
     const pulse = 20 + Math.sin(engine.time * 2.2) * 4 * engine.energy;
+    const outerPulse = pulse * (4.6 + Math.sin(engine.time * 1.3) * 0.3);
 
-    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, pulse * 5);
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerPulse);
     glow.addColorStop(0, "rgba(220, 246, 255, 0.95)");
     glow.addColorStop(0.2, "rgba(118, 214, 255, 0.72)");
     glow.addColorStop(0.55, "rgba(64, 148, 255, 0.22)");
     glow.addColorStop(1, "rgba(44, 94, 186, 0)");
 
     ctx.beginPath();
-    ctx.arc(cx, cy, pulse * 5, 0, TAU);
+    ctx.arc(cx, cy, outerPulse, 0, TAU);
     ctx.fillStyle = glow;
     ctx.fill();
 
@@ -1221,8 +1410,9 @@ body {
   }
 
   function drawRings() {
-    const cx = engine.width / 2;
-    const cy = engine.height / 2;
+    const center = getCenter();
+    const cx = center.cx;
+    const cy = center.cy;
 
     const rings = [
       { radius: 200, width: 5, alpha: 0.18 },
@@ -1248,6 +1438,42 @@ body {
       ctx.lineWidth = 1;
       ctx.stroke();
     });
+  }
+
+  function drawHyperField() {
+    const center = getCenter();
+    const cx = center.cx;
+    const cy = center.cy;
+    const zoomEnergy = clamp((engine.zoom - 0.95) * 0.9 + engine.energy * 0.4, 0, 1.8);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    for (let i = 0; i < 7; i += 1) {
+      const ring = 100 + i * 32 + Math.sin(engine.time * 1.8 + i * 0.75) * 12 * zoomEnergy;
+      const gradient = ctx.createRadialGradient(cx, cy, ring * 0.55, cx, cy, ring);
+      const hue = (205 + i * 17 + engine.hueShift + engine.time * 6) % 360;
+      gradient.addColorStop(0, `hsla(${hue}, 94%, 66%, 0)`);
+      gradient.addColorStop(0.7, `hsla(${hue}, 84%, 60%, ${0.05 + zoomEnergy * 0.05})`);
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(cx, cy, ring * engine.zoom, 0, TAU);
+      ctx.fill();
+    }
+
+    for (let i = 0; i < 40; i += 1) {
+      const angle = (i / 40) * TAU + engine.time * (0.35 + zoomEnergy * 0.22);
+      const rayLen = 90 + Math.sin(engine.time * 2.2 + i * 0.8) * 50 * zoomEnergy + engine.zoom * 22;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(angle) * 24, cy + Math.sin(angle) * 24);
+      ctx.lineTo(cx + Math.cos(angle) * (24 + rayLen), cy + Math.sin(angle) * (24 + rayLen));
+      ctx.strokeStyle = `hsla(${196 + i * 1.8}, 86%, 72%, ${0.02 + zoomEnergy * 0.04})`;
+      ctx.lineWidth = 0.9;
+      ctx.stroke();
+    }
+
+    ctx.restore();
   }
 
   function updateParticles(dt) {
@@ -1335,8 +1561,9 @@ body {
       return;
     }
 
-    const cx = engine.width / 2;
-    const cy = engine.height / 2;
+    const center = getCenter();
+    const cx = center.cx;
+    const cy = center.cy;
 
     for (let i = 0; i < 120; i += 1) {
       const angle = (i / 120) * TAU + engine.time * 0.65;
@@ -1352,8 +1579,9 @@ body {
   }
 
   function drawCenterReticle() {
-    const cx = engine.width / 2;
-    const cy = engine.height / 2;
+    const center = getCenter();
+    const cx = center.cx;
+    const cy = center.cy;
 
     ctx.save();
     ctx.strokeStyle = "rgba(145, 224, 255, 0.3)";
@@ -1382,6 +1610,7 @@ body {
     const dt = clamp(dtRaw, 0.3, 2.2);
     engine.lastTs = now;
     engine.time += dt * 0.016;
+    engine.pulsePhase += dt * 0.012;
 
     engine.frameCounter += 1;
     if (now - engine.fpsClock > 1000) {
@@ -1398,11 +1627,20 @@ body {
       spinValueEl.textContent = "AUTO";
     }
 
+    const previousZoom = engine.zoom;
+    engine.zoomTarget = clamp(engine.zoomTarget, 0.46, 3.2);
+    engine.zoom = lerp(engine.zoom, engine.zoomTarget, 0.13 * dt);
+    engine.zoomVelocity = engine.zoom - previousZoom;
+
     engine.rotX += engine.spinMomentumX;
     engine.rotY += engine.spinMomentumY;
+    engine.parallaxX = lerp(engine.parallaxX, engine.targetParallaxX, 0.08 * dt);
+    engine.parallaxY = lerp(engine.parallaxY, engine.targetParallaxY, 0.08 * dt);
 
     engine.spinMomentumX *= 0.935;
     engine.spinMomentumY *= 0.94;
+    engine.targetParallaxX *= 0.986;
+    engine.targetParallaxY *= 0.986;
     engine.rotX = clamp(engine.rotX, -1.15, 1.15);
 
     engine.energy = lerp(engine.energy, 1, 0.008 * dt);
@@ -1410,9 +1648,14 @@ body {
     ctx.fillStyle = "rgba(2, 6, 14, 0.2)";
     ctx.fillRect(0, 0, engine.width, engine.height);
 
+    updateModeSoundscape();
+    updateZoomAudio(engine.zoomVelocity, 0.5);
+
     drawStarfield(dt);
     drawHorizonGrid();
+    drawPlasmaClouds();
     updateParticles(dt * 60);
+    drawHyperField();
     drawRings();
     drawCore();
     drawWarpLines();
@@ -1444,6 +1687,11 @@ body {
     lastPalm: null,
     smoothPalm: null,
     lastPinch: null,
+    pinchActive: false,
+    pinchRatioSmooth: null,
+    pinchBaseline: null,
+    pinchBaseZoom: 1.05,
+    lastPinchRatio: null,
     lastSeenAt: 0
   };
 
@@ -1496,42 +1744,48 @@ body {
     const ringUp = isFingerExtended(landmarks, 16, 14, 13);
     const pinkyUp = isFingerExtended(landmarks, 20, 18, 17);
 
+    const palmSpan = distance2D(landmarks[5], landmarks[17]);
     const thumbSpread = distance2D(landmarks[4], landmarks[2]) > distance2D(landmarks[3], landmarks[2]) * 1.2;
     const thumbUp = landmarks[4].y < landmarks[3].y - 0.02;
 
     const pinchDist = distance2D(landmarks[4], landmarks[8]);
-    if (pinchDist < 0.055) {
-      return { name: "PINCH", pinchDist };
+    const pinchRatio = pinchDist / Math.max(0.035, palmSpan);
+    const pinchEnter = 0.5;
+    const pinchExit = 0.64;
+    const pinchDetected = hand.pinchActive ? pinchRatio < pinchExit : pinchRatio < pinchEnter;
+    hand.pinchActive = pinchDetected;
+    if (pinchDetected) {
+      return { name: "PINCH", pinchDist, pinchRatio, palmSpan };
     }
 
     const extCount = [indexUp, middleUp, ringUp, pinkyUp].filter(Boolean).length;
     const thumbsUp = thumbUp && thumbSpread && !indexUp && !middleUp && !ringUp && !pinkyUp;
 
     if (thumbsUp) {
-      return { name: "THUMBS_UP", pinchDist };
+      return { name: "THUMBS_UP", pinchDist, pinchRatio, palmSpan };
     }
 
     if (extCount === 0 && !thumbSpread) {
-      return { name: "FIST", pinchDist };
+      return { name: "FIST", pinchDist, pinchRatio, palmSpan };
     }
 
     if (indexUp && !middleUp && !ringUp && !pinkyUp) {
-      return { name: "ONE_FINGER", pinchDist };
+      return { name: "ONE_FINGER", pinchDist, pinchRatio, palmSpan };
     }
 
     if (indexUp && middleUp && !ringUp && !pinkyUp) {
-      return { name: "TWO_FINGERS", pinchDist };
+      return { name: "TWO_FINGERS", pinchDist, pinchRatio, palmSpan };
     }
 
     if (indexUp && middleUp && ringUp && !pinkyUp) {
-      return { name: "THREE_FINGERS", pinchDist };
+      return { name: "THREE_FINGERS", pinchDist, pinchRatio, palmSpan };
     }
 
     if (extCount >= 3) {
-      return { name: "OPEN_PALM", pinchDist };
+      return { name: "OPEN_PALM", pinchDist, pinchRatio, palmSpan };
     }
 
-    return { name: "NEUTRAL", pinchDist };
+    return { name: "NEUTRAL", pinchDist, pinchRatio, palmSpan };
   }
 
   function stabilizeGesture(rawName) {
@@ -1555,7 +1809,8 @@ body {
       }
     });
 
-    return bestCount >= 4 ? bestName : rawName;
+    const required = rawName === "PINCH" || hand.stableGesture === "PINCH" ? 3 : 4;
+    return bestCount >= required ? bestName : rawName;
   }
 
   function drawHandOverlay(results, landmarks, gestureName) {
@@ -1630,7 +1885,10 @@ body {
     handReticle.style.boxShadow = `0 0 26px ${color}70, inset 0 0 16px ${color}33`;
   }
 
-  function applyGestureLogic(gestureName, pinchDist, palm) {
+  function applyGestureLogic(gestureName, metrics, palm) {
+    const pinchDist = metrics.pinchDist;
+    const pinchRatio = metrics.pinchRatio;
+
     Object.keys(hand.cooldowns).forEach((key) => {
       hand.cooldowns[key] = Math.max(0, hand.cooldowns[key] - 1);
     });
@@ -1639,6 +1897,8 @@ body {
       engine.autoPilot = false;
       spinValueEl.textContent = "HAND";
       spinValueEl.style.color = "#89f6da";
+      engine.targetParallaxX = lerp(engine.targetParallaxX, (palm.x - 0.5) * 120, 0.28);
+      engine.targetParallaxY = lerp(engine.targetParallaxY, (palm.y - 0.5) * 90, 0.28);
 
       if (hand.lastPalm) {
         const dx = palm.x - hand.lastPalm.x;
@@ -1658,10 +1918,14 @@ body {
         }
 
         updateMotionAudio(speed, palm.x);
+        updateZoomAudio(engine.zoomVelocity, palm.x);
       }
 
       hand.lastPalm = { x: palm.x, y: palm.y };
       hand.lastPinch = null;
+      hand.lastPinchRatio = null;
+      hand.pinchRatioSmooth = null;
+      hand.pinchBaseline = null;
 
       if (hand.lastGesture !== "OPEN_PALM") {
         showGesture("OPEN PALM", "Manual rotation engaged", "#84ffd8");
@@ -1674,29 +1938,56 @@ body {
       engine.autoPilot = false;
       spinValueEl.textContent = "HAND";
       spinValueEl.style.color = "#89f6da";
+      engine.targetParallaxX = lerp(engine.targetParallaxX, (palm.x - 0.5) * 150, 0.35);
+      engine.targetParallaxY = lerp(engine.targetParallaxY, (palm.y - 0.5) * 108, 0.35);
 
-      if (hand.lastPinch !== null) {
-        const delta = pinchDist - hand.lastPinch;
-        engine.zoom = clamp(engine.zoom - delta * 5.9, 0.52, 2.8);
-        engine.energy = clamp(engine.energy + (-delta) * 1.1, 0.6, 1.8);
+      if (hand.pinchRatioSmooth === null) {
+        hand.pinchRatioSmooth = pinchRatio;
+        hand.pinchBaseline = pinchRatio;
+        hand.pinchBaseZoom = engine.zoomTarget;
+      } else {
+        hand.pinchRatioSmooth = lerp(hand.pinchRatioSmooth, pinchRatio, 0.45);
+      }
 
-        if (Math.abs(delta) > 0.0024 && hand.cooldowns.pinchTone === 0) {
-          playPinchSound(delta < 0 ? 1 : -1);
-          hand.cooldowns.pinchTone = 8;
-        }
+      const pinchOffsetRaw = hand.pinchRatioSmooth - hand.pinchBaseline;
+      const deadZone = 0.012;
+      const pinchOffset = Math.abs(pinchOffsetRaw) > deadZone
+        ? pinchOffsetRaw - Math.sign(pinchOffsetRaw) * deadZone
+        : 0;
+
+      const mappedZoom = hand.pinchBaseZoom + pinchOffset * 4.3;
+      const prevTargetZoom = engine.zoomTarget;
+      engine.zoomTarget = clamp(lerp(engine.zoomTarget, mappedZoom, 0.35), 0.46, 3.2);
+
+      if (Math.abs(pinchOffsetRaw) > 0.18) {
+        hand.pinchBaseline = hand.pinchRatioSmooth;
+        hand.pinchBaseZoom = engine.zoomTarget;
+      }
+
+      const targetDelta = engine.zoomTarget - prevTargetZoom;
+      engine.energy = clamp(0.88 + Math.abs(pinchOffset) * 1.8 + (engine.zoomTarget - 1) * 0.28, 0.64, 2.2);
+      updateZoomAudio(targetDelta, palm.x);
+
+      if (Math.abs(targetDelta) > 0.0045 && hand.cooldowns.pinchTone === 0) {
+        playPinchSound(targetDelta > 0 ? -1 : 1);
+        hand.cooldowns.pinchTone = 8;
       }
 
       hand.lastPinch = pinchDist;
+      hand.lastPinchRatio = hand.pinchRatioSmooth;
       hand.lastPalm = null;
 
       if (hand.lastGesture !== "PINCH") {
-        showGesture("PINCH", "Zoom and focus shaping", "#ffe497");
+        showGesture("PINCH", "Dolly zoom and depth control", "#ffe497");
         logCommand("Zoom lane armed", "#ffe7a8");
       }
       return;
     }
 
     hand.lastPinch = null;
+    hand.lastPinchRatio = null;
+    hand.pinchRatioSmooth = null;
+    hand.pinchBaseline = null;
     hand.lastPalm = null;
 
     if (gestureName === "ONE_FINGER") {
@@ -1761,6 +2052,7 @@ body {
 
     if (gestureName === "NEUTRAL") {
       updateMotionAudio(0, 0.5);
+      updateZoomAudio(0, 0.5);
       if (hand.lastGesture === "OPEN_PALM" || hand.lastGesture === "PINCH") {
         spinValueEl.textContent = engine.autoPilot ? "AUTO" : "INERTIA";
         spinValueEl.style.color = engine.autoPilot ? "#96dbff" : "#ffdca8";
@@ -1776,7 +2068,12 @@ body {
       handReticle.style.opacity = "0";
       hand.history.length = 0;
       hand.lastPalm = null;
+      hand.smoothPalm = null;
       hand.lastPinch = null;
+      hand.lastPinchRatio = null;
+      hand.pinchRatioSmooth = null;
+      hand.pinchBaseline = null;
+      hand.pinchActive = false;
 
       handStatusEl.textContent = hand.enabled ? "HAND LINK: SEARCHING" : "HAND LINK: OFFLINE";
       handStatusEl.style.color = hand.enabled ? "#ffd7a2" : "#99b9d4";
@@ -1823,7 +2120,7 @@ body {
     handStatusEl.textContent = "HAND LINK: ACTIVE";
     handStatusEl.style.color = "#92ffd4";
 
-    applyGestureLogic(stable, classification.pinchDist, {
+    applyGestureLogic(stable, classification, {
       x: 1 - hand.smoothPalm.x,
       y: hand.smoothPalm.y
     });
