@@ -51,6 +51,7 @@ body {
 #backgroundAura,
 #gridOverlay,
 #scanlines,
+#toneGrade,
 #vignette,
 #flashOverlay {
   position: fixed;
@@ -60,10 +61,10 @@ body {
 
 #backgroundAura {
   background:
-    radial-gradient(circle at 78% 22%, rgba(130, 219, 255, 0.16), transparent 36%),
-    radial-gradient(circle at 18% 82%, rgba(40, 147, 255, 0.16), transparent 42%),
-    radial-gradient(circle at 55% 50%, rgba(20, 120, 220, 0.08), transparent 55%);
-  filter: blur(2px);
+    radial-gradient(circle at 78% 22%, rgba(130, 219, 255, 0.11), transparent 36%),
+    radial-gradient(circle at 18% 82%, rgba(40, 147, 255, 0.1), transparent 42%),
+    radial-gradient(circle at 55% 50%, rgba(20, 120, 220, 0.05), transparent 55%);
+  filter: blur(1px);
 }
 
 #gridOverlay {
@@ -84,6 +85,15 @@ body {
     transparent 3px
   );
   opacity: 0.22;
+}
+
+#toneGrade {
+  background:
+    radial-gradient(circle at 58% 47%, rgba(102, 196, 255, 0.11), transparent 56%),
+    radial-gradient(circle at 24% 80%, rgba(255, 121, 66, 0.06), transparent 46%),
+    linear-gradient(120deg, rgba(4, 15, 30, 0.36), rgba(18, 35, 60, 0.14) 45%, rgba(34, 18, 22, 0.22));
+  mix-blend-mode: soft-light;
+  opacity: 0.52;
 }
 
 #vignette {
@@ -296,6 +306,28 @@ body {
   transition: opacity 140ms ease;
 }
 
+#handReticleSecondary {
+  position: fixed;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  border: 1.8px dashed rgba(126, 198, 247, 0.85);
+  box-shadow:
+    0 0 20px rgba(110, 190, 255, 0.4),
+    inset 0 0 10px rgba(110, 190, 255, 0.22);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+#handReticleSecondary::before {
+  content: "";
+  position: absolute;
+  inset: 26%;
+  border: 1px solid rgba(160, 222, 255, 0.75);
+  border-radius: 50%;
+}
+
 #handReticle::before,
 #handReticle::after {
   content: "";
@@ -483,6 +515,7 @@ body {
 <div id="backgroundAura"></div>
 <div id="gridOverlay"></div>
 <div id="scanlines"></div>
+<div id="toneGrade"></div>
 <div id="vignette"></div>
 <div id="flashOverlay"></div>
 
@@ -491,8 +524,10 @@ body {
     <section class="panel" id="leftPanel">
       <h3>Telemetry</h3>
       <div class="statRow"><span>Mode</span><span id="modeValue">ORBITAL CORE</span></div>
+      <div class="statRow"><span>Hands</span><span id="handsValue">0</span></div>
       <div class="statRow"><span>Spin</span><span id="spinValue">AUTO</span></div>
       <div class="statRow"><span>Zoom</span><span id="zoomValue">1.05x</span></div>
+      <div class="statRow"><span>Depth</span><span id="depthValue">1.00x</span></div>
       <div class="statRow"><span>Energy</span><span id="energyValue">100%</span></div>
       <div class="statRow"><span>Audio</span><span id="audioValue">LIVE</span></div>
       <div class="statRow"><span>FPS</span><span id="fpsValue">60</span></div>
@@ -540,10 +575,15 @@ body {
       <span class="gestureTag">Fist</span>
       <p class="gestureHint">Detonate nova burst and rebuild lattice.</p>
     </article>
+    <article class="gestureCard">
+      <span class="gestureTag">Dual Palms</span>
+      <p class="gestureHint">Two-hand cockpit mode for deep 3D dive control.</p>
+    </article>
   </section>
 </div>
 
 <div id="handReticle"></div>
+<div id="handReticleSecondary"></div>
 
 <section id="cameraDock">
   <div id="camHeader">
@@ -559,7 +599,7 @@ body {
     <h2>Hand Control Runtime</h2>
     <p>
       This build is now fully hand-driven after activation: movement, mode switching, zoom, audio toggle,
-      nova events, and cinematic depth effects all run from gestures.
+      dual-hand cockpit control, nova events, and Stark-style cinematic depth effects all run from gestures.
     </p>
     <button id="startBtn">Enable Neural Hand Control</button>
     <div id="startTiny">Camera permission is required. Best used in a bright room with one hand in frame.</div>
@@ -590,10 +630,13 @@ body {
   const hctx = handCanvas.getContext("2d");
   const camFeed = document.getElementById("camFeed");
   const handReticle = document.getElementById("handReticle");
+  const handReticleSecondary = document.getElementById("handReticleSecondary");
 
   const modeValueEl = document.getElementById("modeValue");
+  const handsValueEl = document.getElementById("handsValue");
   const spinValueEl = document.getElementById("spinValue");
   const zoomValueEl = document.getElementById("zoomValue");
+  const depthValueEl = document.getElementById("depthValue");
   const energyValueEl = document.getElementById("energyValue");
   const audioValueEl = document.getElementById("audioValue");
   const fpsValueEl = document.getElementById("fpsValue");
@@ -633,6 +676,11 @@ body {
     zoom: 1.05,
     zoomTarget: 1.05,
     zoomVelocity: 0,
+    depthDive: 0,
+    depthDiveTarget: 0,
+    cameraZ: 0,
+    cameraZTarget: 0,
+    sensitivity: 1.42,
     hueShift: 0,
     energy: 1,
     autoPilot: true,
@@ -1185,7 +1233,7 @@ body {
     }
   }
 
-  const PARTICLE_COUNT = window.innerWidth < 860 ? 2800 : 3800;
+  const PARTICLE_COUNT = window.innerWidth < 860 ? 2600 : 3400;
   const particles = Array.from({ length: PARTICLE_COUNT }, () => new Particle());
 
   const stars = Array.from({ length: 220 }, () => ({
@@ -1195,7 +1243,7 @@ body {
     twinkle: Math.random() * TAU
   }));
 
-  const plasmaNodes = Array.from({ length: 14 }, () => ({
+  const plasmaNodes = Array.from({ length: 10 }, () => ({
     angle: Math.random() * TAU,
     radius: 120 + Math.random() * 220,
     drift: 0.18 + Math.random() * 0.52,
@@ -1293,17 +1341,18 @@ body {
     const x3 = x * cosY + z2 * sinY;
     const z3 = -x * sinY + z2 * cosY;
 
-    const fov = (390 + engine.zoom * 38) * engine.zoom;
-    const scale = fov / (fov + z3 + 400);
+    const depthShift = z3 + engine.cameraZ;
+    const fov = (360 + engine.zoom * 44) * engine.zoom * (1 + engine.depthDive * 0.16);
+    const scale = fov / (fov + depthShift + 420);
     const radial = Math.sqrt(x3 * x3 + y2 * y2);
-    const lens = 1 + clamp((radial / 540) * (0.09 + engine.energy * 0.06), 0, 0.18);
+    const lens = 1 + clamp((radial / 560) * (0.07 + engine.energy * 0.04 + Math.abs(engine.depthDive) * 0.03), 0, 0.16);
     const center = getCenter();
 
     return {
       x: x3 * scale * lens + center.cx,
       y: y2 * scale * lens + center.cy,
       scale,
-      depth: z3
+      depth: depthShift
     };
   }
 
@@ -1366,7 +1415,7 @@ body {
 
       const gradient = ctx.createRadialGradient(x, y, 0, x, y, spread * engine.zoom);
       const hue = (node.hue + engine.hueShift + engine.time * 8) % 360;
-      gradient.addColorStop(0, `hsla(${hue}, 95%, 70%, ${0.075 + engine.energy * 0.04})`);
+      gradient.addColorStop(0, `hsla(${hue}, 92%, 66%, ${0.03 + engine.energy * 0.02})`);
       gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
 
       ctx.fillStyle = gradient;
@@ -1383,13 +1432,13 @@ body {
     const cx = center.cx;
     const cy = center.cy;
 
-    const pulse = 20 + Math.sin(engine.time * 2.2) * 4 * engine.energy;
+    const pulse = 18 + Math.sin(engine.time * 2.2) * 3.2 * engine.energy;
     const outerPulse = pulse * (4.6 + Math.sin(engine.time * 1.3) * 0.3);
 
     const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerPulse);
-    glow.addColorStop(0, "rgba(220, 246, 255, 0.95)");
-    glow.addColorStop(0.2, "rgba(118, 214, 255, 0.72)");
-    glow.addColorStop(0.55, "rgba(64, 148, 255, 0.22)");
+    glow.addColorStop(0, "rgba(220, 246, 255, 0.78)");
+    glow.addColorStop(0.2, "rgba(118, 214, 255, 0.5)");
+    glow.addColorStop(0.55, "rgba(64, 148, 255, 0.16)");
     glow.addColorStop(1, "rgba(44, 94, 186, 0)");
 
     ctx.beginPath();
@@ -1399,10 +1448,10 @@ body {
 
     ctx.beginPath();
     ctx.arc(cx, cy, pulse, 0, TAU);
-    ctx.fillStyle = "rgba(238, 251, 255, 0.92)";
+    ctx.fillStyle = "rgba(238, 251, 255, 0.78)";
     ctx.fill();
 
-    ctx.strokeStyle = "rgba(163, 233, 255, 0.42)";
+    ctx.strokeStyle = "rgba(163, 233, 255, 0.28)";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(cx, cy, pulse * 1.8, 0, TAU);
@@ -1415,9 +1464,9 @@ body {
     const cy = center.cy;
 
     const rings = [
-      { radius: 200, width: 5, alpha: 0.18 },
-      { radius: 240, width: 2.2, alpha: 0.11 },
-      { radius: 280, width: 1.3, alpha: 0.08 }
+      { radius: 200, width: 4, alpha: 0.12 },
+      { radius: 240, width: 2, alpha: 0.08 },
+      { radius: 280, width: 1.2, alpha: 0.06 }
     ];
 
     const yScale = Math.abs(Math.cos(engine.rotX)) * 0.2 + 0.06;
@@ -1454,7 +1503,7 @@ body {
       const gradient = ctx.createRadialGradient(cx, cy, ring * 0.55, cx, cy, ring);
       const hue = (205 + i * 17 + engine.hueShift + engine.time * 6) % 360;
       gradient.addColorStop(0, `hsla(${hue}, 94%, 66%, 0)`);
-      gradient.addColorStop(0.7, `hsla(${hue}, 84%, 60%, ${0.05 + zoomEnergy * 0.05})`);
+      gradient.addColorStop(0.7, `hsla(${hue}, 84%, 60%, ${0.02 + zoomEnergy * 0.028})`);
       gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.fillStyle = gradient;
       ctx.beginPath();
@@ -1468,7 +1517,7 @@ body {
       ctx.beginPath();
       ctx.moveTo(cx + Math.cos(angle) * 24, cy + Math.sin(angle) * 24);
       ctx.lineTo(cx + Math.cos(angle) * (24 + rayLen), cy + Math.sin(angle) * (24 + rayLen));
-      ctx.strokeStyle = `hsla(${196 + i * 1.8}, 86%, 72%, ${0.02 + zoomEnergy * 0.04})`;
+      ctx.strokeStyle = `hsla(${196 + i * 1.8}, 86%, 72%, ${0.012 + zoomEnergy * 0.02})`;
       ctx.lineWidth = 0.9;
       ctx.stroke();
     }
@@ -1572,7 +1621,7 @@ body {
       ctx.beginPath();
       ctx.moveTo(cx + Math.cos(angle) * 26, cy + Math.sin(angle) * 26);
       ctx.lineTo(cx + Math.cos(angle) * (26 + len), cy + Math.sin(angle) * (26 + len));
-      ctx.strokeStyle = `hsla(${190 + i * 1.2}, 84%, 70%, ${0.04 + Math.sin(engine.time + i * 0.4) * 0.03})`;
+      ctx.strokeStyle = `hsla(${190 + i * 1.2}, 84%, 70%, ${0.022 + Math.sin(engine.time + i * 0.4) * 0.018})`;
       ctx.lineWidth = 0.9;
       ctx.stroke();
     }
@@ -1628,9 +1677,16 @@ body {
     }
 
     const previousZoom = engine.zoom;
-    engine.zoomTarget = clamp(engine.zoomTarget, 0.46, 3.2);
+    engine.zoomTarget = clamp(engine.zoomTarget, 0.44, 3.4);
     engine.zoom = lerp(engine.zoom, engine.zoomTarget, 0.13 * dt);
     engine.zoomVelocity = engine.zoom - previousZoom;
+
+    if (!hand.dual.active) {
+      engine.depthDiveTarget = lerp(engine.depthDiveTarget, 0, 0.04 * dt);
+      engine.cameraZTarget = lerp(engine.cameraZTarget, 0, 0.05 * dt);
+    }
+    engine.depthDive = lerp(engine.depthDive, engine.depthDiveTarget, 0.08 * dt);
+    engine.cameraZ = lerp(engine.cameraZ, engine.cameraZTarget, 0.09 * dt);
 
     engine.rotX += engine.spinMomentumX;
     engine.rotY += engine.spinMomentumY;
@@ -1645,7 +1701,7 @@ body {
 
     engine.energy = lerp(engine.energy, 1, 0.008 * dt);
 
-    ctx.fillStyle = "rgba(2, 6, 14, 0.2)";
+    ctx.fillStyle = "rgba(2, 6, 14, 0.28)";
     ctx.fillRect(0, 0, engine.width, engine.height);
 
     updateModeSoundscape();
@@ -1662,6 +1718,7 @@ body {
     drawCenterReticle();
 
     zoomValueEl.textContent = `${engine.zoom.toFixed(2)}x`;
+    depthValueEl.textContent = `${(1 + engine.depthDive * 0.55).toFixed(2)}x`;
     energyValueEl.textContent = `${Math.round(engine.energy * 100)}%`;
 
     requestAnimationFrame(animate);
@@ -1675,7 +1732,9 @@ body {
     enabled: false,
     lastGesture: "NEUTRAL",
     stableGesture: "NEUTRAL",
+    stableGestureSecondary: "NEUTRAL",
     history: [],
+    historySecondary: [],
     cooldowns: {
       nova: 0,
       mode: 0,
@@ -1686,12 +1745,21 @@ body {
     },
     lastPalm: null,
     smoothPalm: null,
+    smoothPalmSecondary: null,
     lastPinch: null,
     pinchActive: false,
+    pinchActiveSecondary: false,
     pinchRatioSmooth: null,
     pinchBaseline: null,
     pinchBaseZoom: 1.05,
     lastPinchRatio: null,
+    dual: {
+      active: false,
+      baselineSpread: null,
+      baselineAngle: null,
+      baseZoom: 1.05,
+      lastCenter: null
+    },
     lastSeenAt: 0
   };
 
@@ -1738,7 +1806,7 @@ body {
     return tipToMcp > pipToMcp * 1.14 && lm[tip].y < lm[pip].y - 0.012;
   }
 
-  function classifyGesture(landmarks) {
+  function classifyGesture(landmarks, pinchWasActive = false) {
     const indexUp = isFingerExtended(landmarks, 8, 6, 5);
     const middleUp = isFingerExtended(landmarks, 12, 10, 9);
     const ringUp = isFingerExtended(landmarks, 16, 14, 13);
@@ -1752,50 +1820,52 @@ body {
     const pinchRatio = pinchDist / Math.max(0.035, palmSpan);
     const pinchEnter = 0.5;
     const pinchExit = 0.64;
-    const pinchDetected = hand.pinchActive ? pinchRatio < pinchExit : pinchRatio < pinchEnter;
-    hand.pinchActive = pinchDetected;
+    const pinchDetected = pinchWasActive ? pinchRatio < pinchExit : pinchRatio < pinchEnter;
     if (pinchDetected) {
-      return { name: "PINCH", pinchDist, pinchRatio, palmSpan };
+      return { name: "PINCH", pinchDist, pinchRatio, palmSpan, pinchActive: pinchDetected };
     }
 
     const extCount = [indexUp, middleUp, ringUp, pinkyUp].filter(Boolean).length;
     const thumbsUp = thumbUp && thumbSpread && !indexUp && !middleUp && !ringUp && !pinkyUp;
 
     if (thumbsUp) {
-      return { name: "THUMBS_UP", pinchDist, pinchRatio, palmSpan };
+      return { name: "THUMBS_UP", pinchDist, pinchRatio, palmSpan, pinchActive: pinchDetected };
     }
 
     if (extCount === 0 && !thumbSpread) {
-      return { name: "FIST", pinchDist, pinchRatio, palmSpan };
+      return { name: "FIST", pinchDist, pinchRatio, palmSpan, pinchActive: pinchDetected };
     }
 
     if (indexUp && !middleUp && !ringUp && !pinkyUp) {
-      return { name: "ONE_FINGER", pinchDist, pinchRatio, palmSpan };
+      return { name: "ONE_FINGER", pinchDist, pinchRatio, palmSpan, pinchActive: pinchDetected };
     }
 
     if (indexUp && middleUp && !ringUp && !pinkyUp) {
-      return { name: "TWO_FINGERS", pinchDist, pinchRatio, palmSpan };
+      return { name: "TWO_FINGERS", pinchDist, pinchRatio, palmSpan, pinchActive: pinchDetected };
     }
 
     if (indexUp && middleUp && ringUp && !pinkyUp) {
-      return { name: "THREE_FINGERS", pinchDist, pinchRatio, palmSpan };
+      return { name: "THREE_FINGERS", pinchDist, pinchRatio, palmSpan, pinchActive: pinchDetected };
     }
 
     if (extCount >= 3) {
-      return { name: "OPEN_PALM", pinchDist, pinchRatio, palmSpan };
+      return { name: "OPEN_PALM", pinchDist, pinchRatio, palmSpan, pinchActive: pinchDetected };
     }
 
-    return { name: "NEUTRAL", pinchDist, pinchRatio, palmSpan };
+    return { name: "NEUTRAL", pinchDist, pinchRatio, palmSpan, pinchActive: pinchDetected };
   }
 
-  function stabilizeGesture(rawName) {
-    hand.history.push(rawName);
-    if (hand.history.length > 8) {
-      hand.history.shift();
+  function stabilizeGesture(rawName, secondary = false) {
+    const history = secondary ? hand.historySecondary : hand.history;
+    const previousStable = secondary ? hand.stableGestureSecondary : hand.stableGesture;
+
+    history.push(rawName);
+    if (history.length > 8) {
+      history.shift();
     }
 
     const counts = {};
-    hand.history.forEach((value) => {
+    history.forEach((value) => {
       counts[value] = (counts[value] || 0) + 1;
     });
 
@@ -1809,11 +1879,17 @@ body {
       }
     });
 
-    const required = rawName === "PINCH" || hand.stableGesture === "PINCH" ? 3 : 4;
-    return bestCount >= required ? bestName : rawName;
+    const required = rawName === "PINCH" || previousStable === "PINCH" ? 3 : 4;
+    const stable = bestCount >= required ? bestName : rawName;
+    if (secondary) {
+      hand.stableGestureSecondary = stable;
+    } else {
+      hand.stableGesture = stable;
+    }
+    return stable;
   }
 
-  function drawHandOverlay(results, landmarks, gestureName) {
+  function drawHandOverlay(results, landmarksList, gestureNames) {
     hctx.clearRect(0, 0, handCanvas.width, handCanvas.height);
 
     if (results.image) {
@@ -1827,7 +1903,7 @@ body {
       hctx.fillRect(0, 0, handCanvas.width, handCanvas.height);
     }
 
-    if (!landmarks) {
+    if (!landmarksList || landmarksList.length === 0) {
       hctx.fillStyle = "rgba(121, 168, 206, 0.85)";
       hctx.font = '12px "Space Grotesk", sans-serif';
       hctx.textAlign = "center";
@@ -1835,54 +1911,121 @@ body {
       return;
     }
 
-    const color = gestureColorMap[gestureName] || "#8db4d1";
+    landmarksList.forEach((landmarks, handIndex) => {
+      const gName = gestureNames[handIndex] || "NEUTRAL";
+      const color = gestureColorMap[gName] || "#8db4d1";
 
-    hctx.strokeStyle = color;
-    hctx.lineWidth = 1.5;
+      hctx.strokeStyle = color;
+      hctx.lineWidth = handIndex === 0 ? 1.6 : 1.3;
 
-    connectorPairs.forEach(([a, b]) => {
-      const pa = landmarks[a];
-      const pb = landmarks[b];
+      connectorPairs.forEach(([a, b]) => {
+        const pa = landmarks[a];
+        const pb = landmarks[b];
 
-      const x1 = (1 - pa.x) * handCanvas.width;
-      const y1 = pa.y * handCanvas.height;
-      const x2 = (1 - pb.x) * handCanvas.width;
-      const y2 = pb.y * handCanvas.height;
+        const x1 = (1 - pa.x) * handCanvas.width;
+        const y1 = pa.y * handCanvas.height;
+        const x2 = (1 - pb.x) * handCanvas.width;
+        const y2 = pb.y * handCanvas.height;
 
-      hctx.beginPath();
-      hctx.moveTo(x1, y1);
-      hctx.lineTo(x2, y2);
-      hctx.stroke();
+        hctx.beginPath();
+        hctx.moveTo(x1, y1);
+        hctx.lineTo(x2, y2);
+        hctx.stroke();
+      });
+
+      for (let i = 0; i < landmarks.length; i += 1) {
+        const point = landmarks[i];
+        const x = (1 - point.x) * handCanvas.width;
+        const y = point.y * handCanvas.height;
+        const radius = i === 0 ? 4 : 2.5;
+
+        hctx.beginPath();
+        hctx.arc(x, y, radius, 0, TAU);
+        hctx.fillStyle = i === 0 ? "rgba(241, 252, 255, 0.95)" : color;
+        hctx.fill();
+      }
     });
-
-    for (let i = 0; i < landmarks.length; i += 1) {
-      const point = landmarks[i];
-      const x = (1 - point.x) * handCanvas.width;
-      const y = point.y * handCanvas.height;
-      const radius = i === 0 ? 4 : 2.5;
-
-      hctx.beginPath();
-      hctx.arc(x, y, radius, 0, TAU);
-      hctx.fillStyle = i === 0 ? "rgba(241, 252, 255, 0.95)" : color;
-      hctx.fill();
-    }
 
     hctx.fillStyle = "rgba(5, 12, 24, 0.7)";
     hctx.fillRect(0, handCanvas.height - 24, handCanvas.width, 24);
-    hctx.fillStyle = color;
+    hctx.fillStyle = "#a6dbff";
     hctx.font = '11px "Space Grotesk", sans-serif';
     hctx.textAlign = "center";
-    hctx.fillText(gestureText[gestureName].title, handCanvas.width / 2, handCanvas.height - 8);
+    const label = landmarksList.length > 1
+      ? `DUAL ${gestureText[gestureNames[0]]?.title || "HAND"} + ${gestureText[gestureNames[1]]?.title || "HAND"}`
+      : gestureText[gestureNames[0]]?.title || "NEUTRAL";
+    hctx.fillText(label, handCanvas.width / 2, handCanvas.height - 8);
   }
 
-  function updateReticle(xNorm, yNorm, gestureName) {
+  function updateReticle(xNorm, yNorm, gestureName, reticleEl = handReticle, size = 37) {
     const color = gestureColorMap[gestureName] || "#84ffd8";
 
-    handReticle.style.opacity = "1";
-    handReticle.style.borderColor = color;
-    handReticle.style.left = `${xNorm * engine.width - 37}px`;
-    handReticle.style.top = `${yNorm * engine.height - 37}px`;
-    handReticle.style.boxShadow = `0 0 26px ${color}70, inset 0 0 16px ${color}33`;
+    reticleEl.style.opacity = "1";
+    reticleEl.style.borderColor = color;
+    reticleEl.style.left = `${xNorm * engine.width - size}px`;
+    reticleEl.style.top = `${yNorm * engine.height - size}px`;
+    reticleEl.style.boxShadow = `0 0 26px ${color}70, inset 0 0 16px ${color}33`;
+  }
+
+  function applyDualHandControl(primary, secondary) {
+    Object.keys(hand.cooldowns).forEach((key) => {
+      hand.cooldowns[key] = Math.max(0, hand.cooldowns[key] - 1);
+    });
+
+    engine.autoPilot = false;
+    spinValueEl.textContent = "DUAL";
+    spinValueEl.style.color = "#9dd8ff";
+
+    const cx = (primary.palm.x + secondary.palm.x) * 0.5;
+    const cy = (primary.palm.y + secondary.palm.y) * 0.5;
+    const vx = secondary.palm.x - primary.palm.x;
+    const vy = secondary.palm.y - primary.palm.y;
+    const spread = Math.sqrt(vx * vx + vy * vy);
+    const angle = Math.atan2(vy, vx);
+    const avgWristZ = (primary.wristZ + secondary.wristZ) * 0.5;
+
+    if (!hand.dual.active) {
+      hand.dual.active = true;
+      hand.dual.baselineSpread = spread;
+      hand.dual.baselineAngle = angle;
+      hand.dual.baseZoom = engine.zoomTarget;
+      hand.dual.lastCenter = { x: cx, y: cy };
+      showGesture("DUAL HANDS", "Stark cockpit control online", "#8fd2ff");
+      logCommand("Dual-hand depth cockpit active", "#96ccff");
+    }
+
+    const spreadDelta = spread - hand.dual.baselineSpread;
+    const angleDelta = Math.atan2(Math.sin(angle - hand.dual.baselineAngle), Math.cos(angle - hand.dual.baselineAngle));
+    const centerDx = hand.dual.lastCenter ? cx - hand.dual.lastCenter.x : 0;
+    const centerDy = hand.dual.lastCenter ? cy - hand.dual.lastCenter.y : 0;
+
+    const mappedZoom = hand.dual.baseZoom + spreadDelta * 2.85 * engine.sensitivity;
+    engine.zoomTarget = clamp(lerp(engine.zoomTarget, mappedZoom, 0.46), 0.44, 3.4);
+
+    engine.spinMomentumY += -centerDx * 1.1 * engine.sensitivity;
+    engine.spinMomentumX += centerDy * 0.82 * engine.sensitivity;
+    engine.spinMomentumY += -angleDelta * 0.045 * engine.sensitivity;
+
+    engine.targetParallaxX = lerp(engine.targetParallaxX, (cx - 0.5) * 180, 0.32);
+    engine.targetParallaxY = lerp(engine.targetParallaxY, (cy - 0.5) * 130, 0.32);
+
+    const depthFromSpread = clamp(spreadDelta * 7.2, -1.6, 1.9);
+    const depthFromZ = clamp(-avgWristZ * 3.3, -1.3, 1.6);
+    engine.depthDiveTarget = lerp(engine.depthDiveTarget, depthFromSpread + depthFromZ, 0.24);
+    engine.cameraZTarget = clamp(-engine.depthDiveTarget * 165, -250, 250);
+
+    const motion = Math.sqrt(centerDx * centerDx + centerDy * centerDy) + Math.abs(spreadDelta) * 0.85 + Math.abs(angleDelta) * 0.22;
+    updateMotionAudio(motion, cx);
+    updateZoomAudio(engine.zoomVelocity + spreadDelta * 0.1, cx);
+
+    engine.energy = clamp(1.02 + Math.abs(spreadDelta) * 2.2 + Math.abs(angleDelta) * 1.1, 0.92, 2.4);
+
+    if (Math.abs(spreadDelta) > 0.08) {
+      hand.dual.baselineSpread = spread;
+      hand.dual.baseZoom = engine.zoomTarget;
+    }
+
+    hand.dual.lastCenter = { x: cx, y: cy };
   }
 
   function applyGestureLogic(gestureName, metrics, palm) {
@@ -1897,21 +2040,23 @@ body {
       engine.autoPilot = false;
       spinValueEl.textContent = "HAND";
       spinValueEl.style.color = "#89f6da";
-      engine.targetParallaxX = lerp(engine.targetParallaxX, (palm.x - 0.5) * 120, 0.28);
-      engine.targetParallaxY = lerp(engine.targetParallaxY, (palm.y - 0.5) * 90, 0.28);
+      engine.targetParallaxX = lerp(engine.targetParallaxX, (palm.x - 0.5) * 130, 0.34);
+      engine.targetParallaxY = lerp(engine.targetParallaxY, (palm.y - 0.5) * 95, 0.34);
+      engine.depthDiveTarget = lerp(engine.depthDiveTarget, (0.5 - palm.y) * 0.9, 0.14);
+      engine.cameraZTarget = clamp(-engine.depthDiveTarget * 110, -180, 180);
 
       if (hand.lastPalm) {
         const dx = palm.x - hand.lastPalm.x;
         const dy = palm.y - hand.lastPalm.y;
         const speed = Math.sqrt(dx * dx + dy * dy);
 
-        engine.spinMomentumY += -dx * 0.52;
-        engine.spinMomentumX += dy * 0.36;
+        engine.spinMomentumY += -dx * 0.74 * engine.sensitivity;
+        engine.spinMomentumX += dy * 0.5 * engine.sensitivity;
 
-        if (hand.cooldowns.swipe === 0 && Math.abs(dx) > 0.026 && speed > 0.027) {
+        if (hand.cooldowns.swipe === 0 && Math.abs(dx) > 0.021 && speed > 0.02) {
           const direction = dx > 0 ? 1 : -1;
-          engine.spinMomentumY += -direction * 0.58;
-          hand.cooldowns.swipe = 26;
+          engine.spinMomentumY += -direction * 0.8 * engine.sensitivity;
+          hand.cooldowns.swipe = 20;
           showGesture(direction > 0 ? "SWIPE RIGHT" : "SWIPE LEFT", "Kinetic spin impulse", "#84f3ff");
           playSwipeSound(direction);
           flash("rgba(120, 200, 255, 0.12)", 90);
@@ -1938,26 +2083,28 @@ body {
       engine.autoPilot = false;
       spinValueEl.textContent = "HAND";
       spinValueEl.style.color = "#89f6da";
-      engine.targetParallaxX = lerp(engine.targetParallaxX, (palm.x - 0.5) * 150, 0.35);
-      engine.targetParallaxY = lerp(engine.targetParallaxY, (palm.y - 0.5) * 108, 0.35);
+      engine.targetParallaxX = lerp(engine.targetParallaxX, (palm.x - 0.5) * 160, 0.42);
+      engine.targetParallaxY = lerp(engine.targetParallaxY, (palm.y - 0.5) * 118, 0.42);
 
       if (hand.pinchRatioSmooth === null) {
         hand.pinchRatioSmooth = pinchRatio;
         hand.pinchBaseline = pinchRatio;
         hand.pinchBaseZoom = engine.zoomTarget;
       } else {
-        hand.pinchRatioSmooth = lerp(hand.pinchRatioSmooth, pinchRatio, 0.45);
+        hand.pinchRatioSmooth = lerp(hand.pinchRatioSmooth, pinchRatio, 0.58);
       }
 
       const pinchOffsetRaw = hand.pinchRatioSmooth - hand.pinchBaseline;
-      const deadZone = 0.012;
+      const deadZone = 0.009;
       const pinchOffset = Math.abs(pinchOffsetRaw) > deadZone
         ? pinchOffsetRaw - Math.sign(pinchOffsetRaw) * deadZone
         : 0;
 
-      const mappedZoom = hand.pinchBaseZoom + pinchOffset * 4.3;
+      const mappedZoom = hand.pinchBaseZoom + pinchOffset * 5.4 * engine.sensitivity;
       const prevTargetZoom = engine.zoomTarget;
-      engine.zoomTarget = clamp(lerp(engine.zoomTarget, mappedZoom, 0.35), 0.46, 3.2);
+      engine.zoomTarget = clamp(lerp(engine.zoomTarget, mappedZoom, 0.48), 0.44, 3.4);
+      engine.depthDiveTarget = lerp(engine.depthDiveTarget, (engine.zoomTarget - 1) * 0.8, 0.14);
+      engine.cameraZTarget = clamp(-engine.depthDiveTarget * 130, -210, 210);
 
       if (Math.abs(pinchOffsetRaw) > 0.18) {
         hand.pinchBaseline = hand.pinchRatioSmooth;
@@ -1970,7 +2117,7 @@ body {
 
       if (Math.abs(targetDelta) > 0.0045 && hand.cooldowns.pinchTone === 0) {
         playPinchSound(targetDelta > 0 ? -1 : 1);
-        hand.cooldowns.pinchTone = 8;
+        hand.cooldowns.pinchTone = 6;
       }
 
       hand.lastPinch = pinchDist;
@@ -2061,19 +2208,28 @@ body {
   }
 
   function processHandResults(results) {
-    const hasHands = results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
+    const landmarksList = results.multiHandLandmarks || [];
+    handsValueEl.textContent = String(landmarksList.length);
 
-    if (!hasHands) {
-      drawHandOverlay(results, null, "NEUTRAL");
+    if (landmarksList.length === 0) {
+      drawHandOverlay(results, [], []);
       handReticle.style.opacity = "0";
+      handReticleSecondary.style.opacity = "0";
       hand.history.length = 0;
+      hand.historySecondary.length = 0;
       hand.lastPalm = null;
       hand.smoothPalm = null;
+      hand.smoothPalmSecondary = null;
       hand.lastPinch = null;
       hand.lastPinchRatio = null;
       hand.pinchRatioSmooth = null;
       hand.pinchBaseline = null;
       hand.pinchActive = false;
+      hand.pinchActiveSecondary = false;
+      hand.dual.active = false;
+      hand.dual.baselineSpread = null;
+      hand.dual.baselineAngle = null;
+      hand.dual.lastCenter = null;
 
       handStatusEl.textContent = hand.enabled ? "HAND LINK: SEARCHING" : "HAND LINK: OFFLINE";
       handStatusEl.style.color = hand.enabled ? "#ffd7a2" : "#99b9d4";
@@ -2085,52 +2241,111 @@ body {
       }
 
       updateMotionAudio(0, 0.5);
+      updateZoomAudio(0, 0.5);
       hand.lastGesture = "NEUTRAL";
       return;
     }
 
     hand.lastSeenAt = performance.now();
 
-    const landmarks = results.multiHandLandmarks[0];
-    const classification = classifyGesture(landmarks);
-    const stable = stabilizeGesture(classification.name);
-    hand.stableGesture = stable;
+    const palmCenterFromLandmarks = (lm) => {
+      const palmIndices = [0, 5, 9, 13, 17];
+      let x = 0;
+      let y = 0;
+      for (let i = 0; i < palmIndices.length; i += 1) {
+        x += lm[palmIndices[i]].x;
+        y += lm[palmIndices[i]].y;
+      }
+      return { x: x / palmIndices.length, y: y / palmIndices.length };
+    };
 
-    drawHandOverlay(results, landmarks, stable);
+    const trackedHands = landmarksList.slice(0, 2).map((landmarks, index) => {
+      const classification = classifyGesture(landmarks, index === 0 ? hand.pinchActive : hand.pinchActiveSecondary);
+      const palm = palmCenterFromLandmarks(landmarks);
+      return {
+        landmarks,
+        classification,
+        palm,
+        wristZ: landmarks[0].z
+      };
+    }).sort((a, b) => a.palm.x - b.palm.x);
 
-    const palmIndices = [0, 5, 9, 13, 17];
-    let palmX = 0;
-    let palmY = 0;
-    for (let i = 0; i < palmIndices.length; i += 1) {
-      palmX += landmarks[palmIndices[i]].x;
-      palmY += landmarks[palmIndices[i]].y;
-    }
-    palmX /= palmIndices.length;
-    palmY /= palmIndices.length;
+    hand.pinchActive = !!trackedHands[0]?.classification.pinchActive;
+    hand.pinchActiveSecondary = !!trackedHands[1]?.classification.pinchActive;
+
+    const primaryStable = stabilizeGesture(trackedHands[0].classification.name, false);
+    const secondaryStable = trackedHands[1]
+      ? stabilizeGesture(trackedHands[1].classification.name, true)
+      : "NEUTRAL";
+
+    drawHandOverlay(
+      results,
+      trackedHands.map((h) => h.landmarks),
+      trackedHands.length > 1 ? [primaryStable, secondaryStable] : [primaryStable]
+    );
 
     if (!hand.smoothPalm) {
-      hand.smoothPalm = { x: palmX, y: palmY };
+      hand.smoothPalm = { x: trackedHands[0].palm.x, y: trackedHands[0].palm.y };
     } else {
-      hand.smoothPalm.x = lerp(hand.smoothPalm.x, palmX, 0.32);
-      hand.smoothPalm.y = lerp(hand.smoothPalm.y, palmY, 0.32);
+      hand.smoothPalm.x = lerp(hand.smoothPalm.x, trackedHands[0].palm.x, 0.42);
+      hand.smoothPalm.y = lerp(hand.smoothPalm.y, trackedHands[0].palm.y, 0.42);
     }
 
-    updateReticle(1 - hand.smoothPalm.x, hand.smoothPalm.y, stable);
+    const primaryPalmScreen = { x: 1 - hand.smoothPalm.x, y: hand.smoothPalm.y };
+    updateReticle(primaryPalmScreen.x, primaryPalmScreen.y, primaryStable, handReticle, 37);
 
-    handStatusEl.textContent = "HAND LINK: ACTIVE";
-    handStatusEl.style.color = "#92ffd4";
-
-    applyGestureLogic(stable, classification, {
-      x: 1 - hand.smoothPalm.x,
-      y: hand.smoothPalm.y
-    });
-
-    if (stable !== hand.lastGesture) {
-      const text = gestureText[stable] || gestureText.NEUTRAL;
-      showGesture(text.title, text.description, gestureColorMap[stable] || "#a7cee9");
+    let secondaryPalmScreen = null;
+    if (trackedHands[1]) {
+      if (!hand.smoothPalmSecondary) {
+        hand.smoothPalmSecondary = { x: trackedHands[1].palm.x, y: trackedHands[1].palm.y };
+      } else {
+        hand.smoothPalmSecondary.x = lerp(hand.smoothPalmSecondary.x, trackedHands[1].palm.x, 0.42);
+        hand.smoothPalmSecondary.y = lerp(hand.smoothPalmSecondary.y, trackedHands[1].palm.y, 0.42);
+      }
+      secondaryPalmScreen = { x: 1 - hand.smoothPalmSecondary.x, y: hand.smoothPalmSecondary.y };
+      updateReticle(secondaryPalmScreen.x, secondaryPalmScreen.y, secondaryStable, handReticleSecondary, 31);
+    } else {
+      handReticleSecondary.style.opacity = "0";
+      hand.smoothPalmSecondary = null;
+      hand.historySecondary.length = 0;
+      hand.stableGestureSecondary = "NEUTRAL";
+      hand.pinchActiveSecondary = false;
     }
 
-    hand.lastGesture = stable;
+    handStatusEl.textContent = trackedHands.length > 1 ? "HAND LINK: DUAL ACTIVE" : "HAND LINK: ACTIVE";
+    handStatusEl.style.color = trackedHands.length > 1 ? "#9ecfff" : "#92ffd4";
+
+    if (trackedHands.length > 1 && secondaryPalmScreen) {
+      applyDualHandControl(
+        { palm: primaryPalmScreen, wristZ: trackedHands[0].wristZ, gesture: primaryStable },
+        { palm: secondaryPalmScreen, wristZ: trackedHands[1].wristZ, gesture: secondaryStable }
+      );
+
+      if ((primaryStable === "FIST" || secondaryStable === "FIST") && hand.cooldowns.nova === 0 && !engine.novaActive) {
+        triggerNova();
+        hand.cooldowns.nova = 110;
+      }
+
+      if (hand.lastGesture !== "DUAL_HANDS") {
+        showGesture("DUAL HANDS", "Deep-dive 3D cockpit active", "#8fd2ff");
+      }
+      hand.lastGesture = "DUAL_HANDS";
+      return;
+    }
+
+    hand.dual.active = false;
+    hand.dual.baselineSpread = null;
+    hand.dual.baselineAngle = null;
+    hand.dual.lastCenter = null;
+
+    applyGestureLogic(primaryStable, trackedHands[0].classification, primaryPalmScreen);
+
+    if (primaryStable !== hand.lastGesture) {
+      const text = gestureText[primaryStable] || gestureText.NEUTRAL;
+      showGesture(text.title, text.description, gestureColorMap[primaryStable] || "#a7cee9");
+    }
+
+    hand.lastGesture = primaryStable;
   }
 
   async function startHandTracking() {
@@ -2172,10 +2387,10 @@ body {
       });
 
       hand.model.setOptions({
-        maxNumHands: 1,
+        maxNumHands: 2,
         modelComplexity: 1,
-        minDetectionConfidence: 0.72,
-        minTrackingConfidence: 0.66
+        minDetectionConfidence: 0.66,
+        minTrackingConfidence: 0.58
       });
 
       hand.model.onResults(processHandResults);
@@ -2195,7 +2410,7 @@ body {
 
       setLoading(100, "Neural link stabilized.");
 
-      showGesture("HAND LINKED", "All controls are now gesture-driven", "#81ffd7");
+      showGesture("HAND LINKED", "Single + dual-hand controls are live", "#81ffd7");
       logCommand("Hand tracking online", "#8fffd8");
       playToggleSound(true);
       flash("rgba(120, 255, 214, 0.18)", 140);
