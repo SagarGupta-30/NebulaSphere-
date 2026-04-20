@@ -1,4 +1,4 @@
-# NebulaSphere
+# NebulaSphere.
 
 A futuristic, gesture-driven particle simulation running entirely from a single `index.html` front end.
 
