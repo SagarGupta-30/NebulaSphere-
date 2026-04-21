@@ -24,7 +24,7 @@ python3 -m http.server 4173
 
 Then open:
 
-```text
+```text```
 http://localhost:4173
 ```
 
