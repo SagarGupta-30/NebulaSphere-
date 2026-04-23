@@ -2,7 +2,7 @@
 
 A futuristic, gesture-driven particle simulation running entirely from a single `index.html` front end.
 
-## Features
+## Features..
 - Full hand-first control (after one-time activation):
   - `Open Palm`: Rotate + swipe spin impulse
   - `Pinch`: Zoom and energy shaping
