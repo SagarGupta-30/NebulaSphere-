@@ -8,7 +8,7 @@ A futuristic, gesture-driven particle simulation running entirely from a single 
   - `Pinch`: Zoom and energy shaping
   - `One Finger`: Next render mode
   - `Two Fingers`: Spectral hue shift
-  - `Three Fingers`: Toggle immersive audio
+  - `Three Fingers`: Toggle immersive audio..
   - `Thumbs Up`: Toggle autopilot
   - `Fist`: Nova burst
 - Real-time particle engine with multiple simulation modes
